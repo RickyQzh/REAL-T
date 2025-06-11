@@ -1,11 +1,11 @@
 #!/bin/bash
 
-conda activate t2 && python3 ./utils/download_asr_model.py \
+conda activate REAL-T && python3 ./utils/download_asr_model.py \
   --repo_id FireRedTeam/FireRedASR-AED-L \
   --save_dir ./FireRedASR/pretrained_models
 
 mkdir -p ./datasets
-conda activate t2 && python3 ./utils/download_REAL-T.py \
+conda activate REAL-T && python3 ./utils/download_REAL-T.py \
 --save_dir "./datasets" \
 --hub_repo "SLbaba/REAL-T"
 
