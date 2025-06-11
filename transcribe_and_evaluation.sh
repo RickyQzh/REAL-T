@@ -17,22 +17,22 @@ ENGLISH_ASR_MODEL="whisper-large-v2"
 
 # Test Which PRIMARY test set or BASE test set or other
 TEST_SET_DIR="./datasets/REAL-T/PRIMARY"
-
-# Mapping csv filename
-MAPPING_CSV_NAME="tse_audio_mapping.csv"
+# TEST_SET_DIR="./datasets/REAL-T/BASE"
 
 INCLUDING_FISHER="False"
 
 # Base directories to process
 BASE_DIRS=(
-    # "/root/shared-nvme/open-source/REAL-T/output/PRIMARY/bsrnn_hr_vox1"
-    "/root/shared-nvme/open-source/debug/result_PRIMARY/tselm"
+    "/root/shared-nvme/open-source/REAL-T/output/PRIMARY/bsrnn_hr_vox1"
 )
 
 # Get operation mode from arguments
-# Usage: ./this_script.sh 1       (only ASR)
-#        ./this_script.sh 2       (only Evaluation)
-#        ./this_script.sh 1 2     (both ASR and Evaluation)
+# Usage: bash -i ./transcribe_and_evaluation.sh 1       (only ASR)
+#        bash -i ./transcribe_and_evaluation.sh 2       (only Evaluation)
+#        bash -i ./transcribe_and_evaluation.sh 1 2     (both ASR and Evaluation)
+
+# Mapping csv filename
+MAPPING_CSV_NAME="tse_audio_mapping.csv"
 
 MODES=("$@")
 
