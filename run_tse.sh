@@ -2,8 +2,11 @@
 
 conda activate REAL-T
 
+# v1 is suitable for USEF-TFGridnet, bsrnn_vox1, bsrnn_hr_vox1, bsrnn_hr_100, bsrnn_hr_360, bsrnn_hr_SDR_360
+# v2 is suitable for bsrnn_100,bsrnn_360, 
+
 # Rename your model
-MODEL_NAME="bsrnn_hr_vox1"  # bsrnn_hr pretrained on VoxCeleb1
+# MODEL_NAME="bsrnn_hr_vox1"  # bsrnn_hr pretrained on VoxCeleb1
 MODEL_NAME="bsrnn_vox1"     # bsrnn pretrained on VoxCeleb1
 
 # Dataset names
