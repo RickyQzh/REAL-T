@@ -76,7 +76,7 @@ $ export PYTHONPATH=$PWD/wesep:$PYTHONPATH
 Evaluation requires the `REAL-T` dataset and the ASR model checkpoint `FireRedASR-AED-L` from Hugging Face. The dataset must be prepared in a specific format before running evaluation. To automatically set up everything, run:
 
 ```bash
-bash -i /pre.sh
+bash -i ./pre.sh
 ```
 After that, navigate to the working directory:
 
