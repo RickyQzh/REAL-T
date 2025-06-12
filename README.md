@@ -208,8 +208,8 @@ Typically, run `1 2` for a full process.
 
 ```bash
 BASE_DIRS=(
-    "/root/shared-nvme/open-source/REAL-T/output/PRIMARY/bsrnn_vox1"
-    "/root/shared-nvme/open-source/REAL-T/output/PRIMARY/bsrnn_hr_vox1"
+    "YourPath/output/PRIMARY/bsrnn_vox1"
+    "YourPath/output/PRIMARY/bsrnn_hr_vox1"
 )
 ```
 
