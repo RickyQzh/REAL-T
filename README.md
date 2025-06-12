@@ -218,7 +218,18 @@ BASE_DIRS=(
 
 ## Results
 
-Results of the several recently proposed TSE models on the PRIMARY test set can be found on our [REAL-T Page](https://real-tse.github.io/).
+The table below compares the performance of several recently proposed TSE models on the simulated Libri2Mix and PRIMARY test sets.  
+
+| Model       | Training Data     | Libri2Mix SI-SDR (dB) | PRIMARY zh (%) | PRIMARY en (%) |
+|:-------------:|:-------------------:|:------------------------:|:----------------:|:----------------:|
+| TSELM-L     | Libri2Mix-360     | /                      | 331.73         | 192.39         |
+| USEF-TFGridnet | Libri2Mix-100  | **18.05**              | 67.98          | 87.27          |
+| **BSRNN**   | Libri2Mix-100     | 12.95                  | 81.74          | 91.20          |
+|             | Libri2Mix-360     | 16.57                  | 69.80          | 73.61          |
+|             | VoxCeleb1         | 16.50                  | **57.61**      | 69.63          |
+| **BSRNN_HR**| Libri2Mix-100     | 15.91                  | 70.03          | 78.96          |
+|             | Libri2Mix-360     | 17.99                  | 63.38          | 74.64          |
+|             | VoxCeleb1         | 16.38                  | 58.77          | **66.46**      |
 
 
 ## Citation
