@@ -1,5 +1,6 @@
 #!/bin/bash
 
+mkdir -p ./FireRedASR/pretrained_models
 conda activate REAL-T && python3 ./utils/download_asr_model.py \
   --repo_id FireRedTeam/FireRedASR-AED-L \
   --save_dir ./FireRedASR/pretrained_models
