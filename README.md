@@ -218,7 +218,9 @@ BASE_DIRS=(
 
 ## Results
 
-The table below compares the performance of several recently proposed TSE models on the simulated Libri2Mix and PRIMARY test sets.  
+The table below compares the performance of several recently proposed TSE models on the simulated Libri2Mix and PRIMARY test sets. 
+
+<div align="center">
 
 | Model       | Training Data     | Libri2Mix SI-SDR (dB) | PRIMARY zh (%) | PRIMARY en (%) |
 |:-------------:|:-------------------:|:------------------------:|:----------------:|:----------------:|
@@ -231,6 +233,7 @@ The table below compares the performance of several recently proposed TSE models
 |             | Libri2Mix-360     | 17.99                  | 63.38          | 74.64          |
 |             | VoxCeleb1         | 16.38                  | 58.77          | **66.46**      |
 
+</div>
 
 ## Citation
 
