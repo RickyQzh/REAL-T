@@ -83,7 +83,6 @@ cd ./wesep/examples/librimix/tse/v2
 Create an `exp/` directory and inside it, create subdirectories for each model listed below. Each subdirectory must contain:
 
 * avg_model.pt — the model checkpoint
-* 
 * config.yaml — the model configuration file
 
 ⚠️ Important: The directory names must exactly match those defined in `./tse_baseline/tse_model/` to ensure proper model loading.
