@@ -31,7 +31,7 @@ Key features of REAL-T include:
 
 - **Multi-lingual**: English and Mandarin recordings
 - **Multi-genre**: Covering diverse conversational scenarios
-- **Multi-enrollment**: Multiple enrollment utterances per target speaker for robustness
+- **Multi-enrollment**: Multiple enrollment utterance from different parts of the conversation
 
 To support controlled evaluation, we define two test sets:
 
