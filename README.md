@@ -1,7 +1,7 @@
 # REAL-T: Real Conversational Mixtures for Target Speaker Extraction
 
 <p align="center">
-  <img src="./logo.drawio.svg" alt="REAL-T Logo" width="200"/>
+  <img src="./figure/logo.drawio.svg" alt="REAL-T Logo" width="200"/>
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@
   </a>
 </p>
 
-![Pipeline](REAL-T.png)
+![Pipeline](./figure/pipeline.svg)
 
 
 ## Introduction
