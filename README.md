@@ -1,6 +1,10 @@
 # REAL-T: Real Conversational Mixtures for Target Speaker Extraction
 
 <p align="center">
+  <img src="./logo.drawio.svg" alt="REAL-T Logo" width="200"/>
+</p>
+
+<p align="center">
   <a href="xxxxxxxx">
     <img src="https://img.shields.io/badge/Paper-ArXiv-red" alt="Paper">
   </a>
