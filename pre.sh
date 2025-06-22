@@ -7,7 +7,7 @@ conda activate REAL-T && python3 ./utils/download_asr_model.py \
 
 mkdir -p ./datasets
 conda activate REAL-T && python3 ./utils/download_REAL-T.py \
---save_dir "./datasets" \
+--save_dir "./datasets/REAL-T" \
 --hub_repo "SLbaba/REAL-T"
 
 
