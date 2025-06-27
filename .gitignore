@@ -36,6 +36,7 @@ venv
 exp
 datasets
 datasets.tar.gz
+FireRedASR/pretrained_models/
 raw_wav
 tensorboard
 **/*build*
