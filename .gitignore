@@ -34,7 +34,8 @@ venv
 .DS_Store
 
 exp
-data
+datasets
+datasets.tar.gz
 raw_wav
 tensorboard
 **/*build*
