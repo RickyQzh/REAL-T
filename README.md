@@ -64,6 +64,8 @@ pip install -r requirements.txt
 
 ### 3. Set up Linux PATH and PYTHONPATH
 
+> Please Replace `$PWD` Below with the Absolute Path to this Project
+
 ```
 $ export PATH=$PWD/fireredasr/:$PWD/fireredasr/utils/:$PATH
 $ export PYTHONPATH=$PWD/:$PYTHONPATH
@@ -73,68 +75,23 @@ $ export PYTHONPATH=$PWD/wesep:$PYTHONPATH
 
 ### 4. Prepare Dataset and Checkpoints
 
-Evaluation requires the `REAL-T` dataset and the ASR model checkpoint `FireRedASR-AED-L` from Hugging Face. The dataset must be prepared in a specific format before running evaluation. To automatically set up everything, run:
+Evaluation requires the `REAL-T` dataset and the ASR model checkpoint `FireRedASR-AED-L` and `whisper-large-v2` from Hugging Face. The dataset must be prepared in a specific format before running evaluation. To automatically set up everything, run:
 
 ```bash
 bash -i ./pre.sh
-```
-After that, navigate to the working directory:
-
-```bash
-cd ./wesep/examples/librimix/tse/v2
-```
-
-Create an `exp/` directory and inside it, create subdirectories for each model listed below. Each subdirectory must contain:
-
-* avg_model.pt — the model checkpoint
-* config.yaml — the model configuration file
-
-⚠️ Important: The directory names must exactly match those defined in `./tse_baseline/tse_model/` to ensure proper model loading.
-
-The required directory structure is (you only need to include the models you intend to evaluate):
-
-```
-exp
-├── bsrnn_100
-│   ├── avg_model.pt
-│   └── config.yaml
-├── bsrnn_360
-│   ├── avg_model.pt
-│   └── config.yaml
-├── bsrnn_feats_SDR
-│   ├── avg_model.pt
-│   └── config.yaml
-├── bsrnn_hr_100
-│   ├── avg_model.pt
-│   └── config.yaml
-├── bsrnn_hr_360
-│   ├── avg_model.pt
-│   └── config.yaml
-├── bsrnn_hr_vox1
-│   ├── avg_model.pt
-│   └── config.yaml
-├── spex_plus_100
-│   ├── avg_model.pt
-│   └── config.yaml
-├── spex_plus_360
-│   ├── avg_model.pt
-│   └── config.yaml
-└── usef_tfgridnet_100
-    ├── avg_model.pt
-    └── config.yaml
 ```
 
 ## Evaluation
 
 ### TSE Inference on REAL-T
 
-If you are using the Wesep toolkit, you can directly run the script below. Otherwise, please refer to `run_tse.sh` to build your own TSE system based on its structure and logic. Before execution, make sure to review the script's parameters—such as the evaluation subset, output directory, and other configurable options.
+The `run_tse.sh` script below demonstrates how to perform TSE inference with the Wesep toolkit using a **BSRNN model** trained on **VoxCeleb1**. You can adapt its `input/output` structure to suit your own TSE model.
 
 ➡️ See [Bash Script Parameters: run_tse.sh](#run_tsesh) for detailed setup.
 
 ```bash
 cd REAL-T
-bash -i run_tes.sh
+bash -i run_tse.sh
 ```
 
 ### ASR-based Evaluation of TSE
@@ -161,7 +118,7 @@ This script runs Target Speaker Extraction (TSE) inference for multiple datasets
 
 | **Variable Name** | **Description** |
 | :--- | :--- |
-| `MODEL_NAME 🚩` | Name of the TSE model used for inference (e.g., `bsrnn_hr_360`). |
+| `MODEL_NAME 🚩` | Name of the TSE model used for inference (e.g., `bsrnn_vox1`). |
 | `DATASETS 🚩` | List of datasets to process (e.g., AliMeeting, AMI, CHiME6, AISHELL-4, DipCo). Fisher can also be included if needed. |
 | `TEST_SET 🚩` | Test subset to use: `PRIMARY` or `BASE`. |
 | `DEVICE 🚩` | Device on which to run inference (`cuda` for GPU, `cpu` for CPU). |
