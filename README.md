@@ -89,7 +89,7 @@ bash -i ./pre.sh
 
 ### TSE Inference on REAL-T
 
-The `run_tse.sh` script below demonstrates how to perform TSE inference with the Wesep toolkit using a **BSRNN model** trained on **VoxCeleb1**. You can adapt its `input/output` structure to suit your own TSE model.
+The `run_tse.sh` script below demonstrates how to perform TSE inference with the [Wesep toolkit](https://github.com/wenet-e2e/wesep) using a **BSRNN model** trained on **VoxCeleb1**. You can adapt its `input/output` structure to suit your own TSE model.
 
 ➡️ See [Bash Script Parameters: run_tse.sh](#run_tsesh) for detailed setup.
 
