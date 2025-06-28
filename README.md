@@ -52,6 +52,10 @@ Datasets are at [huggingface](https://huggingface.co/datasets/SLbaba/REAL-T).
 ```bash
 git clone https://github.com/REAL-TSE/REAL-T.git
 cd REAL-T
+
+# install wesep
+git submodule init
+git submodule update
 ```
 
 ### 2. Create a Conda environment and install dependencies
