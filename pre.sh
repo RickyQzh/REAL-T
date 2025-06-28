@@ -1,9 +1,12 @@
 #!/bin/bash
 
 mkdir -p ./FireRedASR/pretrained_models
+mkdir -p ./whisper/pretrained_models
 conda activate REAL-T && python3 ./utils/download_asr_model.py \
-  --repo_id FireRedTeam/FireRedASR-AED-L \
-  --save_dir ./FireRedASR/pretrained_models
+  --zh_repo_id FireRedTeam/FireRedASR-AED-L \
+  --zh_save_dir ./FireRedASR/pretrained_models \
+  --en_repo_id openai/whisper-large-v2 \
+  --en_save_dir ./whisper/pretrained_models
 
 mkdir -p ./datasets
 conda activate REAL-T && python3 ./utils/download_REAL-T.py \

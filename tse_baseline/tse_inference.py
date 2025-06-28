@@ -2,7 +2,7 @@ import argparse
 import os
 import pandas as pd
 import soundfile as sf
-from tse_model import load_tse_model
+import wesep
 from tqdm import tqdm
 import torch
 
@@ -13,7 +13,6 @@ def parse_arguments():
     parser.add_argument("--meta_csv_path", type=str, required=True, help="Path to the CSV file with metadata")
     parser.add_argument("--output_dir", type=str, required=True, help="Directory to save the TSE result")
     parser.add_argument("--device", type=str, default="cuda", help="Device to run the model (e.g., 'cuda' or 'cpu')")
-    parser.add_argument("--model_name", type=str, default="bsrnn", help="Model name to load")
     return parser.parse_args()
 
 def process_tse_row(mixture_utterance, enrolment_utterance, utterance_map, model, output_wav_dir):
@@ -45,7 +44,9 @@ def process_tse_row(mixture_utterance, enrolment_utterance, utterance_map, model
 def main():
     args = parse_arguments()
     
-    model = load_tse_model(args.device, args.model_name)
+    model = wesep.load_model("english")
+    model.set_device(args.device)
+
 
     utterance_map = pd.read_csv(args.utterance_map_csv).set_index("utterance")["path"].to_dict()
 

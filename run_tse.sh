@@ -2,11 +2,8 @@
 
 conda activate REAL-T
 
-# v1 is suitable for USEF-TFGridnet, bsrnn_vox1, bsrnn_hr_vox1, bsrnn_hr_100, bsrnn_hr_360, bsrnn_hr_SDR_360
-# v2 is suitable for bsrnn_100,bsrnn_360, 
-
 # Rename your model
-# MODEL_NAME="bsrnn_hr_vox1"  # bsrnn_hr pretrained on VoxCeleb1
+# MODEL_NAME="bsrnn_hr_vox1"
 MODEL_NAME="bsrnn_vox1"     # bsrnn pretrained on VoxCeleb1
 
 # Dataset names
@@ -24,7 +21,7 @@ BASE_META_PATH="./datasets/REAL-T"
 BASE_OUTPUT_DIR="./output"
 
 
-TSE_SCRIPT="./tse_baseline/tse.py"
+TSE_SCRIPT="./tse_baseline/tse_inference.py"
 
 BASE_OUTPUT_DIR="${BASE_OUTPUT_DIR}/${TEST_SET}"
 mkdir -p "$BASE_OUTPUT_DIR"
@@ -43,8 +40,7 @@ for DATASET in "${DATASETS[@]}"; do
         --meta_csv_path "$META_CSV_PATH" \
         --output_dir "$OUTPUT_DIR" \
         --utterance_map_csv "$UTTERANCE_MAP_CSV" \
-        --device "$DEVICE" \
-        --model_name "$MODEL_NAME"
+        --device "$DEVICE"
 
     # Check if TSE processing succeeded
     if [ $? -ne 0 ]; then

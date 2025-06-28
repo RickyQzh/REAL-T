@@ -1,14 +1,13 @@
 import torch
 import torchaudio
-from transformers import WhisperProcessor, WhisperForConditionalGeneration
-from transformers import pipeline
+from transformers import WhisperProcessor, WhisperForConditionalGeneration,pipeline
 from fireredasr.models.fireredasr import FireRedAsr
 
 class WhisperASR:
-    def __init__(self, model_name="openai/whisper-large-v2", device="cuda"):
+    def __init__(self, model_path="./whisper/pretrained_models/whisper-large-v2", device="cuda"):
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
-        self.processor = WhisperProcessor.from_pretrained(model_name, task="transcribe")
-        self.model = WhisperForConditionalGeneration.from_pretrained(model_name).to(self.device)
+        self.processor = WhisperProcessor.from_pretrained(model_path, task="transcribe")
+        self.model = WhisperForConditionalGeneration.from_pretrained(model_path).to(self.device)
 
     def transcribe_audio(self, audio_path, language="en"):
 
@@ -59,10 +58,3 @@ class FireRedASR_AED_L_ASRModel:
             )
             transcription = results[0]['text']
             return transcription.strip()
-        
-# if __name__ == "__main__":
-#     # Example usage
-#     model = WhisperASR()
-#     audio_file = "/root/shared-nvme/datasets/Fisher/eval/16k/fe_03_00927.wav"
-#     transcription = model.transcribe_audio(audio_file)
-#     print("Transcription:", transcription)
