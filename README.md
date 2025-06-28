@@ -68,7 +68,7 @@ pip install -r requirements.txt
 
 ### 3. Set up Linux PATH and PYTHONPATH
 
-> Please Replace `$PWD` Below with the Absolute Path to this Project
+> Please replace `$PWD` below with the absolute path to this project
 
 ```
 $ export PATH=$PWD/fireredasr/:$PWD/fireredasr/utils/:$PATH
