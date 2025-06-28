@@ -71,9 +71,9 @@ pip install -r requirements.txt
 > Please replace `$PWD` below with the absolute path to this project
 
 ```
-$ export PATH=$PWD/fireredasr/:$PWD/fireredasr/utils/:$PATH
-$ export PYTHONPATH=$PWD/:$PYTHONPATH
-$ export PYTHONPATH=$PWD/wesep:$PYTHONPATH
+$ export PATH=$PWD/FireRedASR/fireredasr/:$PWD/FireRedASR/fireredasr/utils/:$PATH
+$ export PYTHONPATH=$PWD/FireRedASR/:$PYTHONPATH
+$ export PYTHONPATH=$PWD/wesep/:$PYTHONPATH
 ```
 
 
