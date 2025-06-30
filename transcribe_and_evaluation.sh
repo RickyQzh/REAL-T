@@ -23,7 +23,7 @@ INCLUDING_FISHER="False"
 
 # Base directories to process
 BASE_DIRS=(
-    "YourPath/REAL-T/output/PRIMARY/bsrnn_hr_vox1"
+    "YourPath/REAL-T/output/PRIMARY/bsrnn_vox1"
 )
 
 # Get operation mode from arguments
