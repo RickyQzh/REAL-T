@@ -47,6 +47,16 @@ run_asr() {
     for BASE_DIR in "${BASE_DIRS[@]}"; do
         echo "Processing base directory: $BASE_DIR"
 
+        mapfile -t dataset_dirs < <(find "$BASE_DIR" -maxdepth 1 -mindepth 1 -type d)
+		if [ ${#dataset_dirs[@]} -eq 0 ]; then
+		    echo "No datasets found under $BASE_DIR, skipping."
+		    continue
+		fi
+		echo "Found ${#dataset_dirs[@]} datasets under $BASE_DIR:"
+		for dir in "${dataset_dirs[@]}"; do
+		    echo "  - $(basename "$dir")"
+		done
+  
         for dataset_path in "$BASE_DIR"/*; do
             if [ -d "$dataset_path" ]; then
                 dataset=$(basename "$dataset_path")
