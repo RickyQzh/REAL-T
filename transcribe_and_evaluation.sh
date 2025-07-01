@@ -23,7 +23,7 @@ INCLUDING_FISHER="False"
 
 # Base directories to process
 BASE_DIRS=(
-    "YourPath/REAL-T/output/PRIMARY/bsrnn_hr_vox1"
+    "./output/PRIMARY/bsrnn_vox1"
 )
 
 # Get operation mode from arguments
@@ -48,6 +48,16 @@ run_asr() {
         echo "Processing base directory: $BASE_DIR"
 
         for dataset_path in "$BASE_DIR"/*; do
+            mapfile -t dataset_dirs < <(find "$BASE_DIR" -maxdepth 1 -mindepth 1 -type d)
+            if [ ${#dataset_dirs[@]} -eq 0 ]; then
+                echo "No datasets found under $BASE_DIR, skipping."
+                continue
+            fi
+            echo "Found ${#dataset_dirs[@]} datasets under $BASE_DIR:"
+            for dir in "${dataset_dirs[@]}"; do
+                echo "  - $(basename "$dir")"
+            done
+
             if [ -d "$dataset_path" ]; then
                 dataset=$(basename "$dataset_path")
                 # Set ASR model according to dataset
