@@ -1,13 +1,14 @@
-import torch
+import torch, os
 import torchaudio
 from transformers import WhisperProcessor, WhisperForConditionalGeneration,pipeline
 from fireredasr.models.fireredasr import FireRedAsr
 
 class WhisperASR:
-    def __init__(self, model_path="./whisper/pretrained_models/whisper-large-v2", device="cuda"):
+    def __init__(self, model_name="openai/whisper-large-v2", model_path="./whisper/pretrained_models/whisper-large-v2", device="cuda"):
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
-        self.processor = WhisperProcessor.from_pretrained(model_path, task="transcribe")
-        self.model = WhisperForConditionalGeneration.from_pretrained(model_path).to(self.device)
+        model_source = model_path if os.path.isdir(model_path) else model_name
+        self.processor = WhisperProcessor.from_pretrained(model_source, task="transcribe")
+        self.model = WhisperForConditionalGeneration.from_pretrained(model_source).to(self.device)
 
     def transcribe_audio(self, audio_path, language="en"):
 

@@ -5,7 +5,7 @@ set -eu
 # ==== Configurations ====
 
 # Activate conda environment
-conda activate REAL-T
+# conda activate REAL-T
 
 # Python scripts
 ASR_SCRIPT="./asr/asr_inference.py"
@@ -23,7 +23,7 @@ INCLUDING_FISHER="False"
 
 # Base directories to process
 BASE_DIRS=(
-    "YourPath/REAL-T/output/PRIMARY/bsrnn_vox1"
+    "YourPath/REAL-T/output/PRIMARY/bsrnn_hr_vox1"
 )
 
 # Get operation mode from arguments
@@ -44,22 +44,12 @@ fi
 # ==== Functions ====
 
 run_asr() {
-    echo "Processing base directory: $BASE_DIR"
-    mapfile -t dataset_dirs < <(find "$BASE_DIR" -maxdepth 1 -mindepth 1 -type d)
-    if [ ${#dataset_dirs[@]} -eq 0 ]; then
-    	echo "No datasets found under $BASE_DIR, skipping."
-	continue
-    fi
-    echo "Found ${#dataset_dirs[@]} datasets under $BASE_DIR:"
-    for dir in "${dataset_dirs[@]}"; do
-	echo "  - $(basename "$dir")"
-    done
- 
     for BASE_DIR in "${BASE_DIRS[@]}"; do
+        echo "Processing base directory: $BASE_DIR"
+
         for dataset_path in "$BASE_DIR"/*; do
             if [ -d "$dataset_path" ]; then
                 dataset=$(basename "$dataset_path")
-
                 # Set ASR model according to dataset
                 if [[ "$dataset" == "AliMeeting" || "$dataset" == "AISHELL-4" ]]; then
                     ASR_MODEL_NAME="$CHINESE_ASR_MODEL"
@@ -94,7 +84,16 @@ run_asr_evaluation() {
     for BASE_DIR in "${BASE_DIRS[@]}"; do
         echo "Running TER Evaluation..."
         BASE_NAME=$(basename "$BASE_DIR")
-        echo "$BASE_NAME"
+        # echo "$BASE_NAME"
+        mapfile -t dataset_dirs < <(find "$BASE_DIR" -maxdepth 1 -mindepth 1 -type d)
+        if [ ${#dataset_dirs[@]} -eq 0 ]; then
+            echo "No datasets found under $BASE_DIR, skipping."
+            continue
+        fi
+        echo "Found ${#dataset_dirs[@]} datasets under $BASE_DIR:"
+        for dir in "${dataset_dirs[@]}"; do
+            echo "  - $(basename "$dir")"
+        done
 
         if [ "$INCLUDING_FISHER" == "True" ]; then
             SUFFIX="_including_fisher"
