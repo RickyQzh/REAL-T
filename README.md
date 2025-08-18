@@ -199,10 +199,18 @@ The table below compares the performance of several recently proposed TSE models
 ## Citation
 
 ```
-xxxx
+@inproceedings{li25da_interspeech,
+  title     = {{REAL-T: Real Conversational Mixtures for Target Speaker Extraction}},
+  author    = {{Shaole Li and Shuai Wang and Jiangyu Han and Ke Zhang and Wupeng Wang and Haizhou Li}},
+  year      = {{2025}},
+  booktitle = {{Interspeech 2025}},
+  pages     = {{1923--1927}},
+  doi       = {{10.21437/Interspeech.2025-2662}},
+  issn      = {{2958-1796}},
+}
 ```
 
 
 ## Contact
 
-For any questions, please contact: `xxxxx@gmail.com`
+For any questions, please contact: `shuaiwang@nju.edu.cn`
