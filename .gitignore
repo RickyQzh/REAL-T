@@ -41,3 +41,10 @@ whisper/pretrained_models/
 raw_wav
 tensorboard
 **/*build*
+
+# WAV files and output directory
+/output
+*.wav
+
+# DNSMOS
+DNSMOS/
