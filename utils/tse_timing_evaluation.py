@@ -4,6 +4,7 @@ import math
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -421,6 +422,125 @@ def summarize_micro(
     return pd.DataFrame(rows)
 
 
+def format_float(value: float) -> str:
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "nan"
+    return f"{value:.6f}"
+
+
+def format_duration(value: float) -> str:
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "nan"
+    return f"{value:.2f}"
+
+
+def build_ascii_table(headers: List[str], rows: List[List[str]]) -> List[str]:
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for idx, cell in enumerate(row):
+            widths[idx] = max(widths[idx], len(cell))
+
+    sep = "+-" + "-+-".join("-" * w for w in widths) + "-+"
+    header_line = "| " + " | ".join(headers[i].ljust(widths[i]) for i in range(len(headers))) + " |"
+    lines = [sep, header_line, sep]
+    for row in rows:
+        lines.append("| " + " | ".join(row[i].ljust(widths[i]) for i in range(len(row))) + " |")
+    lines.append(sep)
+    return lines
+
+
+def format_kv_block(items: List[Tuple[str, str]]) -> List[str]:
+    if not items:
+        return []
+    max_key_len = max(len(k) for k, _ in items)
+    return [f"  {key.ljust(max_key_len)} : {value}" for key, value in items]
+
+
+def _format_summary_table(
+    df: pd.DataFrame,
+    group_col: str,
+    include_total_row: bool,
+) -> List[str]:
+    if df is None or df.empty:
+        return ["  (no rows)"]
+
+    rows = []
+    for row in df.itertuples(index=False):
+        name = getattr(row, group_col)
+        if not include_total_row and name == "__ALL__":
+            continue
+        rows.append(
+            [
+                str(name),
+                str(int(row.samples)),
+                format_duration(float(row.tp_dur)),
+                format_duration(float(row.fp_dur)),
+                format_duration(float(row.fn_dur)),
+                format_float(float(row.precision)),
+                format_float(float(row.recall)),
+                format_float(float(row.f1)),
+                format_duration(float(row.gt_speech_dur)),
+                format_duration(float(row.pred_speech_dur)),
+            ]
+        )
+
+    if not rows:
+        return ["  (no rows)"]
+
+    return build_ascii_table(
+        [
+            group_col,
+            "samples",
+            "tp_dur_s",
+            "fp_dur_s",
+            "fn_dur_s",
+            "precision",
+            "recall",
+            "f1",
+            "gt_speech_s",
+            "pred_speech_s",
+        ],
+        rows,
+    )
+
+
+def _format_counter_table(dataset_counters: Dict[str, EvalCounters]) -> List[str]:
+    if not dataset_counters:
+        return ["  (no rows)"]
+
+    rows = []
+    for dataset_name in sorted(dataset_counters):
+        c = dataset_counters[dataset_name]
+        rows.append(
+            [
+                dataset_name,
+                str(int(c.total)),
+                str(int(c.processed)),
+                str(int(c.skipped)),
+                str(int(c.missing_meta)),
+                str(int(c.missing_vad)),
+                str(int(c.missing_json)),
+                str(int(c.missing_record)),
+                str(int(c.malformed_utterance)),
+            ]
+        )
+
+    return build_ascii_table(
+        [
+            "dataset",
+            "total",
+            "processed",
+            "skipped",
+            "missing_meta",
+            "missing_vad",
+            "missing_json",
+            "missing_record",
+            "bad_utt",
+        ],
+        rows,
+    )
+
+
 def write_report(
     report_path: Path,
     summary_by_dataset: Optional[pd.DataFrame],
@@ -429,36 +549,54 @@ def write_report(
     args: argparse.Namespace,
     save_path: Optional[Path] = None,
 ):
-    """Write report in a format similar to transcribe_and_evaluation.sh TER output (by dataset, by language)."""
+    """Write a readable timing-evaluation report with summary blocks and ASCII tables."""
     lines = []
-    lines.append("Evaluating...")
+    lines.append("TSE Timing Evaluation Summary")
+    lines.append(f"Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append("Metric type: frame-level micro Precision / Recall / F1")
     lines.append("")
 
     if summary_by_dataset is None or summary_by_dataset.empty:
         lines.append("No valid samples evaluated.")
     else:
-        # Total statistics (from __ALL__ row)
         all_row = summary_by_dataset[summary_by_dataset["dataset"] == "__ALL__"]
         if not all_row.empty:
             r = all_row.iloc[0]
-            lines.append("Total statistics:")
-            lines.append(f"Total test count: {int(r['samples'])}")
-            lines.append(f"Total tp_dur: {r['tp_dur']:.2f} s, fp_dur: {r['fp_dur']:.2f} s, fn_dur: {r['fn_dur']:.2f} s")
-            lines.append(f"Micro precision: {r['precision']:.6f}, recall: {r['recall']:.6f}, f1: {r['f1']:.6f}")
-            lines.append(f"Total gt_speech_dur: {r['gt_speech_dur']:.2f} s, pred_speech_dur: {r['pred_speech_dur']:.2f} s")
+            lines.append("Overall Statistics")
+            lines.extend(
+                format_kv_block(
+                    [
+                        ("Total samples", str(int(r["samples"]))),
+                        ("TP duration (s)", format_duration(float(r["tp_dur"]))),
+                        ("FP duration (s)", format_duration(float(r["fp_dur"]))),
+                        ("FN duration (s)", format_duration(float(r["fn_dur"]))),
+                        ("Micro precision", format_float(float(r["precision"]))),
+                        ("Micro recall", format_float(float(r["recall"]))),
+                        ("Micro F1", format_float(float(r["f1"]))),
+                        ("GT speech duration (s)", format_duration(float(r["gt_speech_dur"]))),
+                        ("Pred speech duration (s)", format_duration(float(r["pred_speech_dur"]))),
+                    ]
+                )
+            )
+            lines.append("  Note: overall metrics are computed by accumulating TP / FP / FN first.")
             lines.append("")
 
-        lines.append("Dataset statistics:")
-        lines.append(summary_by_dataset.to_string(index=False))
+        lines.append("Per-dataset Statistics")
+        lines.extend(_format_summary_table(summary_by_dataset, "dataset", include_total_row=False))
         lines.append("")
 
         if summary_by_language is not None and not summary_by_language.empty:
-            lines.append("Language statistics:")
-            lines.append(summary_by_language.to_string(index=False))
+            lines.append("Per-language Statistics")
+            lines.extend(_format_summary_table(summary_by_language, "language", include_total_row=True))
             lines.append("")
 
+    lines.append("Processing Summary")
+    lines.extend(_format_counter_table(dataset_counters))
+    lines.append("")
+
     if save_path is not None:
-        lines.append(f"Results saved to {save_path}")
+        lines.append("Output Files")
+        lines.extend(format_kv_block([("Detail CSV", str(save_path))]))
 
     text = "\n".join(lines) + "\n"
     report_path.parent.mkdir(parents=True, exist_ok=True)
