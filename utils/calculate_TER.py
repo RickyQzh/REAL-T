@@ -34,22 +34,24 @@ def evaluate_TER(
     if "predicted" not in merged_df.columns:
         merged_df["predicted"] = np.nan
 
+    # Only evaluate rows for which we have predictions (e.g. when only Chinese ASR2 is run)
+    datasets_with_pred = set(utterance_to_predicted.keys())
+    merged_df = merged_df[merged_df["source"].isin(datasets_with_pred)].copy()
+
     def fill_result(row):
         dataset_name = row["source"]
         language = row["language"]
         utt_key = f"{row['mixture_utterance']}-{row['enrolment_speakers_utterance']}"
-        # print(f"Processing {dataset_name} {utt_key}")
         gt = row["ground_truth_transcript"]
         gt = normalizer_for_transcript(gt, "Ground Truth", language)
 
-        pred = utterance_to_predicted[dataset_name][utt_key]
+        pred = utterance_to_predicted[dataset_name].get(utt_key, "")
         if pd.isna(pred):
             pred = ""
         pred = normalizer_for_transcript(pred, "Predicted", language)
 
         row["ground_truth_transcript"] = gt
-        # save the predicted transcript before normalization
-        row["predicted"] = utterance_to_predicted[dataset_name][utt_key]
+        row["predicted"] = utterance_to_predicted[dataset_name].get(utt_key, "")
         row["transcript_length"] = len(gt.strip().split())
         row["wer_or_cer"] = siso_word_error_rate(gt, pred).error_rate
 
