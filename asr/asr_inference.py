@@ -23,7 +23,7 @@ def get_asr_model(model_name, device):
 
 def main():
     parser = argparse.ArgumentParser(description="ASR Inference Script")
-    parser.add_argument("--audio_mapping_csv", type=str, required=True, help="Path to the audio mapping CSV file")
+    parser.add_argument("--audio_mapping", "--audio_mapping_csv", dest="audio_mapping_csv", type=str, required=True, help="Path to the audio mapping CSV file")
     parser.add_argument("--model_name", type=str, required=True, help="ASR Model to use")
     parser.add_argument("--dataset_name", type=str, required=True, help="The name of the dataset")
     parser.add_argument("--output_dir", type=str, required=True, help="Directory to save the transcription result")

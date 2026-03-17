@@ -5,7 +5,7 @@ set -eu
 # ==== Configurations ====
 
 # Activate conda environment
-# conda activate REAL-T
+conda activate asr_py310
 
 # Python scripts
 ASR_SCRIPT="./asr/asr_inference.py"
@@ -20,6 +20,10 @@ TEST_SET_DIR="./datasets/REAL-T/PRIMARY"
 # TEST_SET_DIR="./datasets/REAL-T/BASE"
 
 INCLUDING_FISHER="False"
+
+# Datasets that use Chinese ASR vs English ASR (space-separated)
+CHINESE_DATASETS="${CHINESE_DATASETS:-AliMeeting AISHELL-4}"
+ENGLISH_DATASETS="${ENGLISH_DATASETS:-AMI DipCo CHiME6 Fisher}"
 
 # Base directories to process
 BASE_DIRS=(
@@ -60,13 +64,15 @@ run_asr() {
 
             if [ -d "$dataset_path" ]; then
                 dataset=$(basename "$dataset_path")
-                # Set ASR model according to dataset
-                if [[ "$dataset" == "AliMeeting" || "$dataset" == "AISHELL-4" ]]; then
+                # Set ASR model according to dataset (CHINESE_DATASETS / ENGLISH_DATASETS)
+                ASR_MODEL_NAME=""
+                if [[ " ${CHINESE_DATASETS} " =~ " ${dataset} " ]]; then
                     ASR_MODEL_NAME="$CHINESE_ASR_MODEL"
-                elif [[ "$dataset" == "AMI" || "$dataset" == "DipCo" || "$dataset" == "CHiME6" || "$dataset" == "Fisher" ]]; then
+                elif [[ " ${ENGLISH_DATASETS} " =~ " ${dataset} " ]]; then
                     ASR_MODEL_NAME="$ENGLISH_ASR_MODEL"
-                else
-                    echo "Dataset $dataset is not supported. Skipping..."
+                fi
+                if [[ -z "$ASR_MODEL_NAME" ]]; then
+                    echo "Dataset $dataset is not in CHINESE_DATASETS or ENGLISH_DATASETS. Skipping..."
                     continue
                 fi
 
