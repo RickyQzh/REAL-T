@@ -53,9 +53,8 @@ Datasets are at [huggingface](https://huggingface.co/datasets/SLbaba/REAL-T).
 git clone https://github.com/REAL-TSE/REAL-T.git
 cd REAL-T
 
-# install wesep
-git submodule init
-git submodule update
+# install submodules (wesep + FireRedASR2S)
+git submodule update --init --recursive
 ```
 
 ### 2.2 Create a Conda environment and install dependencies
@@ -70,7 +69,7 @@ pip install -r requirements.txt
 
 > Please replace `$PWD` below with the absolute path to this project (REAL-T repo root).
 
-FireRedASR (ASR transcription) and **FireRedASR2S** (e.g. FireRedVAD) use the same scheme: clone inside REAL-T and add the repo root to `PYTHONPATH` so that `import fireredasr` / `import fireredasr2s` work.
+FireRedASR (ASR transcription) and **FireRedASR2S** (e.g. FireRedVAD) are expected under the REAL-T repo root. Initialize/update the submodules first, then add the repo roots to `PYTHONPATH` so that `import fireredasr` / `import fireredasr2s` work.
 
 ```
 $ export PATH=$PWD/FireRedASR/fireredasr/:$PWD/FireRedASR/fireredasr/utils/:$PATH
@@ -208,11 +207,11 @@ In addition to TER, this repo provides a **time-segment evaluation** pipeline fo
 
 **Prerequisites**
 
-1. **FireRedASR2S**: Clone into the REAL-T project directory (see Installation step 1). Set **PYTHONPATH** as in Installation step 3 so that `import fireredasr2s` works (same scheme as FireRedASR).
+1. **FireRedASR2S**: Initialize/update the submodule inside the REAL-T project directory (see Installation step 1). Set **PYTHONPATH** as in Installation step 3 so that `import fireredasr2s` works (same scheme as FireRedASR).
    **FireRedVAD weights are not auto-downloaded.** The script expects the model in `FireRedASR2S/pretrained_models/FireRedVAD/VAD/` (that directory must contain at least `cmvn.ark` and `model.pth.tar`). Recommended: download from [ModelScope (魔搭)](https://www.modelscope.cn/models/xukaituo/FireRedVAD/files). The ModelScope repo already has a `VAD` subfolder, so download to `FireRedASR2S/pretrained_models/FireRedVAD/` (do **not** append `/VAD`); the downloaded `VAD/` will then match the path the script uses:
    ```bash
-   # Clone FireRedASR2S first (if not done)
-   git clone https://github.com/FireRedTeam/FireRedASR2S.git
+   # Initialize FireRedASR2S first (if not done)
+   git submodule update --init --recursive FireRedASR2S
 
    # Download FireRedVAD from ModelScope (saves to .../FireRedVAD/, repo's VAD/ becomes .../FireRedVAD/VAD/)
    pip install modelscope
@@ -374,9 +373,9 @@ To obtain **FireRedASR2-AED** transcription and WER for all datasets, prepare th
 
 ### 4.1 Preparing Local Weights
 
-1. Clone `FireRedASR2S` inside the REAL-T project if it is not already present:
+1. Initialize `FireRedASR2S` inside the REAL-T project if it is not already present:
    ```bash
-   git clone https://github.com/FireRedTeam/FireRedASR2S.git
+   git submodule update --init --recursive FireRedASR2S
    ```
 
 2. Download the Python inference weights to `./FireRedASR2S/pretrained_models/FireRedASR2-AED`:
