@@ -81,7 +81,7 @@ class WhisperASR:
         return transcripts[0]['text'].strip()
 
 class FireRedASR_AED_L_ASRModel:
-    def __init__(self, model_name="aed", model_path=None):
+    def __init__(self, model_name="aed", model_path=None, device="cuda:0"):
         model_path = model_path or _project_path(
             "FireRedASR", "pretrained_models", "FireRedASR-AED-L"
         )
@@ -91,14 +91,19 @@ class FireRedASR_AED_L_ASRModel:
         )
         FireRedAsr = _import_fireredasr()
         self.model = FireRedAsr.from_pretrained(model_name, model_path)
+        self.device = torch.device(device if torch.cuda.is_available() else "cpu")
+        self.use_gpu = self.device.type == "cuda"
 
     def transcribe_audio(self, audio_path, language="zh"):
+        del language
+        if self.use_gpu:
+            torch.cuda.set_device(self.device)
         with torch.no_grad():
             results = self.model.transcribe(
                 ["dummy_id"],
                 [audio_path],
                 {
-                    "use_gpu": 1,
+                    "use_gpu": int(self.use_gpu),
                     "beam_size": 3,
                     "nbest": 1,
                     "decode_max_len": 0,

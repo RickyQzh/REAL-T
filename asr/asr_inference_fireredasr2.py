@@ -60,6 +60,7 @@ def main():
     parser.add_argument("--use_gpu", type=int, default=1, help="Use GPU if available.")
     parser.add_argument("--use_half", type=int, default=0, help="Use fp16 on GPU.")
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size for local ASR.")
+    parser.add_argument("--max_samples", type=int, default=None, help="Optional cap on number of rows to transcribe for smoke tests.")
     args = parser.parse_args()
 
     del args.dataset_name
@@ -78,6 +79,8 @@ def main():
     df = pd.read_csv(audio_mapping_path)
     if "utterance" not in df.columns or "path" not in df.columns:
         raise ValueError("CSV must have columns 'utterance' and 'path'")
+    if args.max_samples is not None:
+        df = df.head(args.max_samples)
 
     model = FireRedASR2_AED_ASRModel(
         model_path=str(model_dir),
