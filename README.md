@@ -130,6 +130,21 @@ cd REAL-T
 bash ./run_eval.sh --base-dir ./output/PRIMARY/BSRNN --test-set PRIMARY --cuda 0
 ```
 
+`run_eval.sh` supports three common usages:
+
+```bash
+# 1 2: run all evaluation sub-scripts, then summarize
+bash ./run_eval.sh --base-dir ./output/PRIMARY/BSRNN --test-set PRIMARY --cuda 0 1 2
+
+# 1: only run all evaluation sub-scripts
+bash ./run_eval.sh --base-dir ./output/PRIMARY/BSRNN --test-set PRIMARY --cuda 0 1
+
+# 2: only summarize existing CSV results
+bash ./run_eval.sh --base-dir ./output/PRIMARY/BSRNN --test-set PRIMARY --cuda 0 2
+```
+
+If no mode is provided, the default is `1 2`.
+
 By default, `run_eval.sh` runs:
 
 1. `TER`
@@ -153,6 +168,21 @@ Expected summary outputs under the chosen `BASE_DIR`:
 - `{BASE_NAME}_spk_similarity.csv` and `{BASE_NAME}_spk_similarity_summary.txt`
 - `{BASE_NAME}_spk_similarity_mixture_enrol.csv` and `{BASE_NAME}_spk_similarity_mixture_enrol_summary.txt`
 - `{BASE_NAME}_dnsmos.csv` and `{BASE_NAME}_dnsmos.txt`
+- `{BASE_NAME}_summary.txt`
+
+`{BASE_NAME}_summary.txt` is a compact aggregated report recomputed from the CSV files above. It contains:
+
+- `Mean by dataset`
+- `Mean by language`
+
+with grouped columns:
+
+- `TER`: `fireredasr-1/whisper`, `fireredasr-2`
+- `SIM`: `enrol-mixture`, `enrol-tse`
+- `DNSMOS`: `SIG`, `BAK`, `OVRL`, `P808`
+- `RATIO`: `precision`, `recall`, `ratio`
+
+At the moment, `RATIO / ratio` is defined as the mean `mixture_ratio` from `{BASE_NAME}_TER.csv`.
 
 Detailed per-metric instructions, prerequisites, and optional visualization are now documented in [`eval/README.md`](./eval/README.md).
 
