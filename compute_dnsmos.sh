@@ -2,11 +2,7 @@
 
 set -euo pipefail
 
-conda activate RealT_py310
-# So that conda-installed libcudnn (e.g. libcudnn.so.9) is found when using CUDA provider
-if [ -n "${CONDA_PREFIX:-}" ] && [ -d "${CONDA_PREFIX}/lib" ]; then
-    export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-fi
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env_setup.sh"
 
 TEST_SET_DIR="${TEST_SET_DIR:-./datasets/REAL-T/PRIMARY}"
 DNSMOS_MODEL_DIR="${DNSMOS_MODEL_DIR:-./DNSMOS}"

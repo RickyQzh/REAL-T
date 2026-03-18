@@ -60,10 +60,16 @@ git submodule update --init --recursive
 ### 2.2 Create a Conda environment and install dependencies
 
 ```bash
-conda create -n REAL-T python=3.9
+conda create -n REAL-T python=3.10
 conda activate REAL-T
 pip install -r requirements.txt
+# Reinstall GPU ORT last so silero-vad / wespeakerruntime do not leave CPU ORT active.
+pip install --force-reinstall --no-deps onnxruntime-gpu==1.19.2
 ```
+
+`requirements.txt` is the only supported Python dependency entrypoint for this repo. For RTX 5090 / `sm_120`, it resolves the `cu128` PyTorch wheels automatically. `wespeaker` remains the only GitHub dependency because local `wesep` imports it directly.
+
+All top-level scripts source `env_setup.sh` by default. That helper activates `REAL-T` and appends the local `FireRedASR` / `FireRedASR2S` / `wesep` paths automatically. If you want to use a different env name temporarily, run them with `REALT_CONDA_ENV=<your_env_name>`.
 
 ### 2.3 Set up Linux PATH and PYTHONPATH
 
@@ -219,13 +225,11 @@ In addition to TER, this repo provides a **time-segment evaluation** pipeline fo
    python -c "from modelscope import snapshot_download; snapshot_download('xukaituo/FireRedVAD', local_dir='./FireRedASR2S/pretrained_models/FireRedVAD')"
    ```
    If the directory is missing or invalid, Mode 1 will raise an error and exit.
-2. **Environment for VAD**: The script uses `conda activate asr_py310`. In that environment install:
+2. **Environment for VAD**: The script defaults to `conda activate REAL-T`. You can activate it manually:
    ```bash
-   conda activate asr_py310
-   pip install pandas tqdm
-   # Install FireRedASR2S dependencies (see FireRedASR2S repo).
+   conda activate REAL-T
    ```
-   Ensure `PYTHONPATH` includes `$PWD/FireRedASR2S` (step 3 above) when running the script.
+   Or just run the top-level shell script directly and let `env_setup.sh` do it for you.
 3. **GT overlap JSON for Mode 2 (evaluation)**: VAD **evaluation** (Mode 2) requires overlap JSON in the following layout. Copy the output of [REAL-T-Ext-channel-re-seclection](https://github.com/REAL-TSE/REAL-T-Ext-channel-re-seclection) into the project:
    ```bash
    # From REAL-T repo root: copy json output to datasets
@@ -292,7 +296,7 @@ Notes:
 
 #### 3.2.3 Speaker Similarity Evaluation (WeSpeaker)
 
-The `compute_spk_similarity.sh` script computes speaker cosine similarity between TSE estimation (or mixture) audio and enrolment audio. **Mode 1** produces a per-utterance details CSV; **Mode 2** generates a summary TXT with Per-dataset and Per-language Statistics from existing CSV. Install dependency first: `pip install wespeakerruntime` (only needed for mode 1).
+The `compute_spk_similarity.sh` script computes speaker cosine similarity between TSE estimation (or mixture) audio and enrolment audio. **Mode 1** produces a per-utterance details CSV; **Mode 2** generates a summary TXT with Per-dataset and Per-language Statistics from existing CSV. `wespeakerruntime` is already included in `requirements.txt`.
 
 **Pair mode** (env `SPK_SIM_PAIR_MODE`):
 - **`tse_enrol`** (default): TSE output vs enrolment. Outputs `{BASE_NAME}_spk_similarity.csv` and `{BASE_NAME}_spk_similarity_summary.txt`.

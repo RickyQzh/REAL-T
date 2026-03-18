@@ -2,8 +2,7 @@
 
 set -eu
 
-# Activate conda environment
-conda activate asr_py310
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env_setup.sh"
 
 # Python scripts
 VAD_SCRIPT="./utils/vad_inference_firered.py"

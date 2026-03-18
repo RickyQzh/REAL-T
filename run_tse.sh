@@ -1,6 +1,6 @@
 #!/bin/bash
 
-conda activate REAL-T
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env_setup.sh"
 
 # Rename your model
 # MODEL_NAME="bsrnn_hr_vox1"

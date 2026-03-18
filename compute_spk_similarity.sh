@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-conda activate RealT_py310
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env_setup.sh"
 
 TEST_SET_DIR="${TEST_SET_DIR:-./datasets/REAL-T/PRIMARY}"
 MAPPING_CSV="${MAPPING_CSV:-./datasets/REAL-T/mapping.csv}"

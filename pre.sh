@@ -1,15 +1,17 @@
 #!/bin/bash
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env_setup.sh"
+
 mkdir -p ./FireRedASR/pretrained_models
 mkdir -p ./whisper/pretrained_models
-conda activate REAL-T && python3 ./utils/download_asr_model.py \
+python3 ./utils/download_asr_model.py \
   --zh_repo_id FireRedTeam/FireRedASR-AED-L \
   --zh_save_dir ./FireRedASR/pretrained_models \
   --en_repo_id openai/whisper-large-v2 \
   --en_save_dir ./whisper/pretrained_models
 
 mkdir -p ./datasets
-conda activate REAL-T && python3 ./utils/download_REAL-T.py \
+python3 ./utils/download_REAL-T.py \
 --save_dir "./datasets/REAL-T" \
 --hub_repo "SLbaba/REAL-T"
 
@@ -34,4 +36,3 @@ find "$ENROL_DIR" -type f -name "*.wav" | while read -r file; do
 done
 
 echo "mapping.csv generated at $(realpath $OUT_CSV)"
-

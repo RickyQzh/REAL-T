@@ -8,8 +8,7 @@ set -eu
 # Outputs: {BASE_DIR}/{dataset}/FireRedASR2-AED/predicted.csv, and
 #          {BASE_DIR}/{BASE_NAME}_TER_ASR2_AED.txt / .csv
 
-# Activate conda environment
-conda activate asr_py310
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env_setup.sh"
 
 # Python scripts
 ASR2_SCRIPT="./asr/asr_inference_fireredasr2.py"

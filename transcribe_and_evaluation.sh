@@ -4,8 +4,7 @@ set -eu
 
 # ==== Configurations ====
 
-# Activate conda environment
-conda activate asr_py310
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env_setup.sh"
 
 # Python scripts
 ASR_SCRIPT="./asr/asr_inference.py"
