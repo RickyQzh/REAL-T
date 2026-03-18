@@ -248,11 +248,11 @@ def summarize_one_base_dir(base_dir: Path, output_txt_name: str | None) -> Path:
         dataset_to_lang=dataset_to_lang,
     )
 
-    ter_dataset = mean_by_group(ter_work, "dataset", ["wer_or_cer", "mixture_ratio"]).rename(
-        columns={"wer_or_cer": "ter_whisper", "mixture_ratio": "ratio"}
+    ter_dataset = mean_by_group(ter_work, "dataset", ["wer_or_cer"]).rename(
+        columns={"wer_or_cer": "ter_whisper"}
     )
-    ter_lang = mean_by_group(ter_work, "language", ["wer_or_cer", "mixture_ratio"]).rename(
-        columns={"language": "lang", "wer_or_cer": "ter_whisper", "mixture_ratio": "ratio"}
+    ter_lang = mean_by_group(ter_work, "language", ["wer_or_cer"]).rename(
+        columns={"language": "lang", "wer_or_cer": "ter_whisper"}
     )
 
     ter2_dataset = mean_by_group(ter2_work, "dataset", ["wer_or_cer"]).rename(
@@ -294,15 +294,15 @@ def summarize_one_base_dir(base_dir: Path, output_txt_name: str | None) -> Path:
         }
     )
 
-    timing_dataset = mean_by_group(timing_work, "dataset", ["precision", "recall"]).rename(
-        columns={"precision": "ratio_precision", "recall": "ratio_recall"}
+    timing_dataset = mean_by_group(timing_work, "dataset", ["precision", "recall", "f1"]).rename(
+        columns={"precision": "ratio_precision", "recall": "ratio_recall", "f1": "ratio_f1"}
     )
-    timing_lang = mean_by_group(timing_work, "language", ["precision", "recall"]).rename(
-        columns={"language": "lang", "precision": "ratio_precision", "recall": "ratio_recall"}
+    timing_lang = mean_by_group(timing_work, "language", ["precision", "recall", "f1"]).rename(
+        columns={"language": "lang", "precision": "ratio_precision", "recall": "ratio_recall", "f1": "ratio_f1"}
     )
 
     dataset_values = merge_metric_maps(
-        to_metric_map(ter_dataset, "dataset", {"ter_whisper": "ter_whisper", "ratio": "ratio"}),
+        to_metric_map(ter_dataset, "dataset", {"ter_whisper": "ter_whisper"}),
         to_metric_map(ter2_dataset, "dataset", {"ter_fireredasr2": "ter_fireredasr2"}),
         to_metric_map(sim_baseline_dataset, "dataset", {"sim_enrol_mixture": "sim_enrol_mixture"}),
         to_metric_map(sim_dataset, "dataset", {"sim_enrol_tse": "sim_enrol_tse"}),
@@ -319,12 +319,16 @@ def summarize_one_base_dir(base_dir: Path, output_txt_name: str | None) -> Path:
         to_metric_map(
             timing_dataset,
             "dataset",
-            {"ratio_precision": "ratio_precision", "ratio_recall": "ratio_recall"},
+            {
+                "ratio_precision": "ratio_precision",
+                "ratio_recall": "ratio_recall",
+                "ratio_f1": "ratio_f1",
+            },
         ),
     )
 
     lang_values = merge_metric_maps(
-        to_metric_map(ter_lang, "lang", {"ter_whisper": "ter_whisper", "ratio": "ratio"}),
+        to_metric_map(ter_lang, "lang", {"ter_whisper": "ter_whisper"}),
         to_metric_map(ter2_lang, "lang", {"ter_fireredasr2": "ter_fireredasr2"}),
         to_metric_map(sim_baseline_lang, "lang", {"sim_enrol_mixture": "sim_enrol_mixture"}),
         to_metric_map(sim_lang, "lang", {"sim_enrol_tse": "sim_enrol_tse"}),
@@ -341,7 +345,11 @@ def summarize_one_base_dir(base_dir: Path, output_txt_name: str | None) -> Path:
         to_metric_map(
             timing_lang,
             "lang",
-            {"ratio_precision": "ratio_precision", "ratio_recall": "ratio_recall"},
+            {
+                "ratio_precision": "ratio_precision",
+                "ratio_recall": "ratio_recall",
+                "ratio_f1": "ratio_f1",
+            },
         ),
     )
 
@@ -359,7 +367,7 @@ def summarize_one_base_dir(base_dir: Path, output_txt_name: str | None) -> Path:
         ("DNSMOS", "P808", "dnsmos_p808"),
         ("RATIO", "precision", "ratio_precision"),
         ("RATIO", "recall", "ratio_recall"),
-        ("RATIO", "ratio", "ratio"),
+        ("RATIO", "f1", "ratio_f1"),
     ]
 
     lines: List[str] = []
@@ -383,13 +391,13 @@ def summarize_one_base_dir(base_dir: Path, output_txt_name: str | None) -> Path:
                 ["SIM enrol-mixture", str(sim_baseline_path)],
                 ["SIM enrol-tse", str(sim_path)],
                 ["DNSMOS", str(dnsmos_path)],
-                ["RATIO precision/recall", str(timing_path)],
+                ["RATIO precision/recall/f1", str(timing_path)],
             ],
         )
     )
     lines.append("")
     lines.append("Notes")
-    lines.append("  ratio column is the mean of mixture_ratio from TER CSV.")
+    lines.append("  RATIO columns are the mean of precision / recall / f1 from TSE_TIMING CSV.")
     lines.append("  All values are recomputed from CSV files instead of reusing existing summary TXT files.")
 
     output_txt.write_text("\n".join(lines) + "\n", encoding="utf-8")

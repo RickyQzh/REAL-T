@@ -80,7 +80,7 @@ Its columns are organized as grouped headers:
 - `RATIO`
   - `precision`
   - `recall`
-  - `ratio`
+  - `f1`
 
 Current metric sources for the aggregated summary:
 
@@ -89,8 +89,7 @@ Current metric sources for the aggregated summary:
 - `SIM / enrol-mixture`: mean `speaker_cosine_similarity` from `{BASE_NAME}_spk_similarity_mixture_enrol.csv`
 - `SIM / enrol-tse`: mean `speaker_cosine_similarity` from `{BASE_NAME}_spk_similarity.csv`
 - `DNSMOS / *`: mean `SIG / BAK / OVRL / P808` from `{BASE_NAME}_dnsmos.csv`
-- `RATIO / precision, recall`: mean `precision / recall` from `{BASE_NAME}_TSE_TIMING.csv`
-- `RATIO / ratio`: mean `mixture_ratio` from `{BASE_NAME}_TER.csv`
+- `RATIO / precision, recall, f1`: mean `precision / recall / f1` from `{BASE_NAME}_TSE_TIMING.csv`
 
 ## Prerequisites
 

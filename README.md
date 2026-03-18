@@ -180,9 +180,9 @@ with grouped columns:
 - `TER`: `fireredasr-1/whisper`, `fireredasr-2`
 - `SIM`: `enrol-mixture`, `enrol-tse`
 - `DNSMOS`: `SIG`, `BAK`, `OVRL`, `P808`
-- `RATIO`: `precision`, `recall`, `ratio`
+- `RATIO`: `precision`, `recall`, `f1`
 
-At the moment, `RATIO / ratio` is defined as the mean `mixture_ratio` from `{BASE_NAME}_TER.csv`.
+At the moment, `RATIO` is fully sourced from `{BASE_NAME}_TSE_TIMING.csv`, using the mean `precision`, `recall`, and `f1`.
 
 Detailed per-metric instructions, prerequisites, and optional visualization are now documented in [`eval/README.md`](./eval/README.md).
 
