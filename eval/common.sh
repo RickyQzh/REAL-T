@@ -24,6 +24,19 @@ init_eval_common() {
         exit 1
     fi
 
+    # Normalize base dirs to their physical paths so symlinked output roots
+    # work the same way as regular directories across all eval scripts.
+    local normalized_base_dirs=()
+    local base_dir=""
+    for base_dir in "${BASE_DIR_LIST[@]}"; do
+        if [ ! -d "$base_dir" ]; then
+            echo "Base directory not found: $base_dir"
+            exit 1
+        fi
+        normalized_base_dirs+=("$(cd "$base_dir" && pwd -P)")
+    done
+    BASE_DIR_LIST=("${normalized_base_dirs[@]}")
+
     read -r -a DATASET_LIST <<< "${DATASETS}"
     if [ "${#DATASET_LIST[@]}" -eq 0 ]; then
         echo "No DATASETS provided."
@@ -38,5 +51,5 @@ dataset_enabled() {
 
 list_dataset_dirs() {
     local base_dir="$1"
-    find "$base_dir" -maxdepth 1 -mindepth 1 -type d | sort
+    find -L "$base_dir" -maxdepth 1 -mindepth 1 -type d | sort
 }
