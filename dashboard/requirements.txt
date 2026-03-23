@@ -1,0 +1,6 @@
+numpy>=1.26,<3
+pandas>=2.2,<3
+streamlit>=1.37,<2
+plotly>=5,<6
+opencc==1.1.9
+transformers>=4.52,<5
