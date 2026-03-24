@@ -41,6 +41,7 @@ whisper/pretrained_models/
 raw_wav
 tensorboard
 **/*build*
+!dashboard/enrol_quality/build_enrol_ter_report.py
 
 # WAV files and output directory
 /output
@@ -48,3 +49,11 @@ tensorboard
 
 # DNSMOS
 DNSMOS/
+
+# Enrol quality intermediate artefacts
+dashboard/enrol_quality/logs/
+dashboard/enrol_quality/shards/
+dashboard/enrol_quality/enrol_inventory*.csv
+dashboard/enrol_quality/enrol_transcripts_*.csv
+dashboard/enrol_quality/enrol_ground_truth_from_no_overlap.csv
+dashboard/enrol_quality/.tmp_enrol_quality_*/
