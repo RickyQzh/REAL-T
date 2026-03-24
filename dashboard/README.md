@@ -53,14 +53,16 @@ Then open `http://<host>:8501` (on a remote machine, use the server’s IP or SS
 ## Data Rules
 
 - Only reads `output/BASE`.
-- Uses `datasets/REAL-T/BASE/*_meta.csv` as the single metadata source.
+- Uses `datasets/REAL-T/BASE/*_meta.csv` as the metric-join metadata source.
+- Uses `datasets/REAL-T/metadata/*_meta.csv` to derive `primary speaker` and the official `PRIMARY` subset with the same full-data logic as `REAL-T-Ext/generate_datasets/filter_subset.py`.
+- Enrol-level filters additionally read `dashboard/enrol_quality/enrol_ter_full.csv` by default.
+  - Override path via env var `REALT_ENROL_TER_FULL_CSV`.
+  - Join key is `BASE.enrolment_speakers_utterance == enrol_ter_full.enrol_id`.
 - Excludes `Fisher` from all views and statistics.
-- `PRIMARY` is implemented as a BASE-derived preset:
-  - primary speaker only
-  - `speaker_ratio >= 20%`
-  - `mixture_duration <= 30s`
-  - `transcript_length > 5`
-- All other custom subsets are also derived from the BASE metadata.
+- `PRIMARY` is no longer derived by recomputing max `speaker_ratio` inside BASE.
+  - It is first identified from full metadata (`datasets/REAL-T/metadata`) and then applied to `output/BASE`.
+  - This matches the official `filter_PRIMARY(full)` semantics instead of the old BASE-only approximation.
+- Custom subsets still read metrics from `output/BASE`, but their `primary speaker` semantics now follow the full metadata rather than BASE-local recomputation.
 
 ## Metrics
 
@@ -82,3 +84,7 @@ The dashboard supports these 11 single-select metrics:
 
 - Missing or unfinished metric CSVs are tolerated. Tables show `NA`, and charts skip missing values.
 - The recommended environment above includes the dependencies needed for `utils.asr_metrics.normalizer_for_transcript`, so transcript-length filtering should use the repo's strict normalization logic instead of the dashboard fallback path.
+- Non-SIM tables keep extra precision for small values so the mean is easier to compare with `*_TER.txt` / `*_summary.txt`.
+- New sidebar filters:
+  - `enrol quality (TER)`: `<= 0.05/0.10/0.15/0.20/0.30` or `不限`
+  - `enrol length (GT词数)`: `0-5`, `>=5`, `>=10`, `>=15`, `>=20`, or `不限`

@@ -907,15 +907,20 @@ def _sim_slice_stats(p_slice: pd.DataFrame) -> tuple[int, float, float, float]:
     return n, mm, mt, float(uplift)
 
 
+def format_metric_value(value: float) -> str:
+    if np.isnan(value):
+        return "NA"
+    if abs(float(value)) < 1.0:
+        return f"{float(value):.4f}"
+    return f"{float(value):.2f}"
+
+
 def format_sim_cell(mix_mean: float, tse_mean: float, uplift_pct: float) -> str:
     if np.isnan(mix_mean) or np.isnan(tse_mean) or np.isnan(uplift_pct):
         return "NA"
     arrow = "↑" if uplift_pct > 0 else "↓" if uplift_pct < 0 else ""
     sign = "+" if uplift_pct > 0 else ""
-    return (
-        f"SIM(enrol-mixture) {mix_mean:.2f} → SIM(enrol-tse) {tse_mean:.2f} / "
-        f"{sign}{uplift_pct:.2f}% {arrow}".rstrip()
-    )
+    return f"{mix_mean:.2f} → {tse_mean:.2f} / {sign}{uplift_pct:.2f}% {arrow}".rstrip()
 
 
 def _sim_group_summary_records(
@@ -1212,7 +1217,7 @@ def format_group_summary_table(df: pd.DataFrame) -> pd.DataFrame:
         )
     for col in cols[2:]:
         display_df[col] = display_df[col].map(
-            lambda value: "NA" if pd.isna(value) else f"{float(value):.2f}",
+            lambda value: "NA" if pd.isna(value) else format_metric_value(float(value)),
         )
     return display_df
 
@@ -1225,7 +1230,7 @@ def format_overall_table(overall_df: pd.DataFrame) -> pd.DataFrame:
         lambda value: "NA" if pd.isna(value) else str(int(value))
     )
     display_df["mean"] = display_df["mean"].map(
-        lambda value: "NA" if pd.isna(value) else f"{float(value):.2f}"
+        lambda value: "NA" if pd.isna(value) else format_metric_value(float(value))
     )
     display_df["status"] = display_df["status"].map(lambda value: STATUS_LABELS.get(value, value.upper()))
     return display_df
@@ -1238,14 +1243,15 @@ def format_sim_overall_table(overall_df: pd.DataFrame) -> pd.DataFrame:
     display_df["count"] = display_df["count"].map(
         lambda value: "NA" if pd.isna(value) else str(int(value)),
     )
-    display_df["SIM"] = display_df.apply(
+    sim_column = "SIM(enrol-mixture) → SIM(enrol-tse) / improvement ↑"
+    display_df[sim_column] = display_df.apply(
         lambda row: format_sim_cell(row["mix_mean"], row["tse_mean"], row["mean"]),
         axis=1,
     )
     display_df["status"] = display_df["status"].map(
         lambda value: STATUS_LABELS.get(value, str(value).upper()),
     )
-    return display_df[["model", "count", "SIM", "status"]]
+    return display_df[["model", "count", sim_column, "status"]]
 
 
 def format_sim_group_summary_table(df: pd.DataFrame) -> pd.DataFrame:

@@ -378,9 +378,16 @@ def main() -> None:
 
     st.title("REAL-T BASE Dashboard")
     st.caption(f"Source root: `{REPO_ROOT / 'output' / 'BASE'}`")
+    st.caption(
+        f"PRIMARY logic source: `{REPO_ROOT / 'datasets' / 'REAL-T' / 'metadata'}`"
+    )
+    if state.enrol_quality_source_path:
+        st.caption(f"Enrol quality source: `{state.enrol_quality_source_path}`")
 
     if state.transcript_length_note:
         st.warning(state.transcript_length_note)
+    if state.enrol_quality_note:
+        st.warning(state.enrol_quality_note)
 
     if not state.models:
         st.error("No model directories were found under `output/BASE`.")
@@ -411,6 +418,12 @@ def main() -> None:
         f"Subset: {subset_label}",
         f"Speaker ratio >= {filter_config.speaker_ratio_min}%",
         f"Transcript length > {filter_config.transcript_length_min}",
+        (
+            f"Enrol TER <= {filter_config.enrol_quality_max:.2f}"
+            if filter_config.enrol_quality_max is not None
+            else "Enrol TER: 不限"
+        ),
+        f"Enrol GT length: {ENROL_GT_LENGTH_LABELS.get(filter_config.enrol_gt_length_filter, filter_config.enrol_gt_length_filter)}",
         f"Speaker scope: {SPEAKER_SCOPE_LABELS[filter_config.speaker_scope]}",
         f"Mixture ratio: {format_optional_threshold(filter_config.mixture_ratio_min, '>= ')}%"
         if filter_config.mixture_ratio_min is not None

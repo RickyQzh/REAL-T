@@ -1,23 +1,15 @@
 #!/usr/bin/env python3
 """
-将 dashboard 源码与 output/BASE 下指标 CSV 打成 dashboard.zip，输出到 REAL-T 根目录。
+将 dashboard 运行所需文件打成 zip（仅包含 .py/.csv）。
 
-默认同时打包 datasets/REAL-T/BASE/*_meta.csv（与 data.py 一致，否则解压后无法加载元数据）。
+默认打包内容：
+1) dashboard 根目录下的 Python 源码（.py）
+2) dashboard/enrol_quality/enrol_ter_full.csv（enrol 质量筛选所需）
+3) output/BASE/* 模型目录中的指标 CSV
+4) datasets/REAL-T/BASE/*_meta.csv（除非 --no-metadata）
+5) datasets/REAL-T/metadata/*_meta.csv（PRIMARY/full 逻辑所需，除非 --no-metadata）
 
-缺少 output/BASE、部分指标 CSV 或 meta CSV 时仅打印警告到 stderr，仍会写出 zip（仅打包实际存在的文件）。
-
-运行方式（在 REAL-T 仓库根目录执行，与 Streamlit 一致）::
-
-    cd /path/to/REAL-T
-    python3 dashboard/pack_dashboard_zip.py
-
-默认生成同目录下的 ``dashboard.zip``。常用参数::
-
-    python3 dashboard/pack_dashboard_zip.py -o /path/to/out.zip   # 指定输出路径
-    python3 dashboard/pack_dashboard_zip.py --dry-run             # 只列出将打包的路径，不写 zip
-    python3 dashboard/pack_dashboard_zip.py --no-metadata           # 不打包 datasets/REAL-T/BASE/*_meta.csv
-
-也可直接 ``python3 /path/to/REAL-T/dashboard/pack_dashboard_zip.py``；脚本通过 ``__file__`` 定位仓库根目录。
+不会打包 README/log/pid/pyc/txt 等非 .py/.csv 文件。
 """
 from __future__ import annotations
 
@@ -39,6 +31,8 @@ METRIC_FILE_SUFFIXES: tuple[str, ...] = (
 
 DASHBOARD_SKIP_DIR_NAMES = frozenset({"__pycache__", ".git", ".mypy_cache", ".ruff_cache"})
 DASHBOARD_SKIP_SUFFIXES = frozenset({".pyc", ".pyo"})
+ALLOWED_SUFFIXES = frozenset({".py", ".csv"})
+DEFAULT_ENROL_TER_CSV_REL = Path("dashboard/enrol_quality/enrol_ter_full.csv")
 
 
 def repo_root() -> Path:
@@ -46,6 +40,7 @@ def repo_root() -> Path:
 
 
 def iter_dashboard_files(dashboard_dir: Path) -> list[Path]:
+    """Collect only top-level dashboard Python files (no subdir scripts/docs/logs)."""
     out: list[Path] = []
     for path in dashboard_dir.rglob("*"):
         if path.is_dir():
@@ -56,8 +51,21 @@ def iter_dashboard_files(dashboard_dir: Path) -> list[Path]:
             continue
         if path.suffix in DASHBOARD_SKIP_SUFFIXES:
             continue
+        if path.suffix not in {".py"}:
+            continue
+        if path.parent != dashboard_dir:
+            continue
         out.append(path)
     return sorted(out)
+
+
+def collect_enrol_quality_csv(root: Path) -> tuple[list[Path], list[str]]:
+    warnings: list[str] = []
+    target = root / DEFAULT_ENROL_TER_CSV_REL
+    if target.is_file():
+        return [target], warnings
+    warnings.append(f"未找到 enrol quality CSV，跳过: {target}")
+    return [], warnings
 
 
 def collect_metric_csvs(output_base: Path) -> tuple[list[Path], list[str]]:
@@ -102,7 +110,10 @@ def main() -> int:
     root = repo_root()
     dashboard_dir = root / "dashboard"
     output_base = root / "output" / "BASE"
-    metadata_dir = root / "datasets" / "REAL-T" / "BASE"
+    metadata_dirs = [
+        root / "datasets" / "REAL-T" / "BASE",
+        root / "datasets" / "REAL-T" / "metadata",
+    ]
 
     parser = argparse.ArgumentParser(description=__doc__.strip().split("\n")[0])
     parser.add_argument(
@@ -115,13 +126,9 @@ def main() -> int:
     parser.add_argument(
         "--no-metadata",
         action="store_true",
-        help="不打包 datasets/REAL-T/BASE/*_meta.csv（解压后需自行保留该目录）",
+        help="不打包 datasets/REAL-T/BASE 与 datasets/REAL-T/metadata 下的 *_meta.csv",
     )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="仅打印将纳入 zip 的文件列表，不写文件",
-    )
+    parser.add_argument("--dry-run", action="store_true", help="仅打印将纳入 zip 的文件列表，不写文件")
     args = parser.parse_args()
 
     if not dashboard_dir.is_dir():
@@ -139,16 +146,30 @@ def main() -> int:
 
     all_warnings: list[str] = []
 
+    enrol_quality_csvs, enrol_quality_warnings = collect_enrol_quality_csv(root)
+    all_warnings.extend(enrol_quality_warnings)
+    for path in enrol_quality_csvs:
+        to_add.append((path, path.relative_to(root).as_posix()))
+
     metric_paths, metric_warnings = collect_metric_csvs(output_base)
     all_warnings.extend(metric_warnings)
     for path in metric_paths:
         to_add.append((path, path.relative_to(root).as_posix()))
 
     if not args.no_metadata:
-        meta_paths, meta_warnings = collect_metadata_csvs(metadata_dir)
-        all_warnings.extend(meta_warnings)
-        for path in meta_paths:
-            to_add.append((path, path.relative_to(root).as_posix()))
+        for metadata_dir in metadata_dirs:
+            meta_paths, meta_warnings = collect_metadata_csvs(metadata_dir)
+            all_warnings.extend(meta_warnings)
+            for path in meta_paths:
+                to_add.append((path, path.relative_to(root).as_posix()))
+
+    # Keep only .py/.csv and deduplicate.
+    dedup: dict[str, tuple[Path, str]] = {}
+    for fs_path, arc in sorted(to_add, key=lambda item: item[1]):
+        if fs_path.suffix not in ALLOWED_SUFFIXES:
+            continue
+        dedup[arc] = (fs_path, arc)
+    to_add = list(dedup.values())
 
     for msg in all_warnings:
         print(f"警告: {msg}", file=sys.stderr)
