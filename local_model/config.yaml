@@ -1,0 +1,25 @@
+model:
+  tse_model: BSRNN_Feats_Local
+
+model_args:
+  tse_model:
+    sr: 16000
+    win: 512
+    stride: 128
+    feature_dim: 128
+    num_repeat: 6
+    speaker_net: ECAPA_TDNN_GLOB_c512
+    spectral_feat: tfmap_emb
+    spk_emb_dim: 256
+    spk_fuse_type: cross_multiply
+    spk_model_freeze: true
+    spk_model_init: wespeaker-voxceleb-ecapa-tdnn512.pt
+    spk_args:
+      embed_dim: 192
+      feat_dim: 80
+      pooling_func: ASTP
+
+    joint_training: true
+
+dataset_args:
+  resample_rate: 16000
