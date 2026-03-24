@@ -37,6 +37,7 @@ try:
         iter_selectable_metric_keys,
         load_dashboard_state,
         normalize_sidebar_metric_key,
+        resolve_effective_dashboard_view,
         selectable_metric_label,
     )
 except ModuleNotFoundError:
@@ -60,6 +61,7 @@ except ModuleNotFoundError:
         iter_selectable_metric_keys,
         load_dashboard_state,
         normalize_sidebar_metric_key,
+        resolve_effective_dashboard_view,
         selectable_metric_label,
     )
 
@@ -93,9 +95,16 @@ ENROL_GT_LENGTH_LABELS = {
     "ge20": ">= 20",
 }
 
+DEFAULT_SELECTED_MODELS = [
+    "bsrnn_vox1",
+    "tfmap_context_vox_old",
+    "lauratse_enrol5",
+    "alphaflowtse_noisy_ECAPAMLP_steps1",
+]
+
 
 st.set_page_config(
-    page_title="REAL-T BASE Dashboard",
+    page_title="REAL-T Dashboard",
     page_icon=":bar_chart:",
     layout="wide",
 )
@@ -115,8 +124,8 @@ def handle_preset_change() -> None:
 
 def ensure_session_defaults() -> None:
     if "preset_name" not in st.session_state:
-        st.session_state["preset_name"] = "BASE"
-        apply_preset_to_state("BASE")
+        st.session_state["preset_name"] = "PRIMARY"
+        apply_preset_to_state("PRIMARY")
     else:
         for key in FILTER_KEYS:
             if key not in st.session_state:
@@ -149,6 +158,42 @@ def format_optional_threshold(value: int | None, prefix: str) -> str:
     return f"{prefix}{value}"
 
 
+def wrap_model_display_name(value: str) -> str:
+    return value.replace("_", "\n_")
+
+
+def default_model_selection(model_options: list[str]) -> list[str]:
+    preferred = [model for model in DEFAULT_SELECTED_MODELS if model in model_options]
+    return preferred if preferred else list(model_options)
+
+
+def build_table_column_config(df: pd.DataFrame, data_column_start: int = 2) -> dict[str, object]:
+    config: dict[str, object] = {}
+    for idx, column in enumerate(df.columns):
+        width = "medium" if idx >= data_column_start else "small"
+        config[str(column)] = st.column_config.TextColumn(str(column), width=width)
+    return config
+
+
+def inject_dataframe_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        [data-testid="stDataFrame"] [role="columnheader"] div,
+        [data-testid="stDataFrame"] [role="gridcell"] div {
+            white-space: pre-wrap !important;
+            line-height: 1.15 !important;
+            word-break: break-word;
+        }
+        [data-testid="stDataFrame"] [role="columnheader"] {
+            height: auto !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def schedule_auto_refresh(interval_seconds: int) -> None:
     if interval_seconds <= 0:
         return
@@ -175,19 +220,19 @@ def build_heatmap(
     matrix = mean_df.copy()
     if sim_uplift:
         labels = matrix.map(
-            lambda value: "" if pd.isna(value) else f"{float(value):+.2f}%",
+            lambda value: "" if pd.isna(value) else f"{float(value):+.4f}%",
         )
-        hover_z = "%{z:+.2f}%"
+        hover_z = "%{z:+.4f}%"
         cbar_title = "Δ% (↑ better)"
-        cbar_fmt: dict[str, str] = {"tickformat": "+.2f", "ticksuffix": "%"}
+        cbar_fmt: dict[str, str] = {"tickformat": "+.4f", "ticksuffix": "%"}
         reverse = False
     else:
-        labels = matrix.map(lambda value: "" if pd.isna(value) else f"{float(value):.2f}")
-        hover_z = "%{z:.2f}"
+        labels = matrix.map(lambda value: "" if pd.isna(value) else f"{float(value):.4f}")
+        hover_z = "%{z:.4f}"
         cbar_title = (
             "Mean (lower is better)" if lower_is_better else "Mean (higher is better)"
         )
-        cbar_fmt = {"tickformat": ".2f"}
+        cbar_fmt = {"tickformat": ".4f"}
         reverse = lower_is_better
 
     # Blues: high z → dark blue. TER: reversescale so small z is dark blue. SIM Δ%: higher
@@ -234,11 +279,11 @@ def build_group_bar_chart(
         return figure
 
     if sim_uplift:
-        text_vals = chart_df["mean"].map(lambda value: f"{value:+.2f}%")
-        hover_y = "%{y:+.2f}%"
+        text_vals = chart_df["mean"].map(lambda value: f"{value:+.4f}%")
+        hover_y = "%{y:+.4f}%"
     else:
-        text_vals = chart_df["mean"].map(lambda value: f"{value:.2f}")
-        hover_y = "%{y:.2f}"
+        text_vals = chart_df["mean"].map(lambda value: f"{value:.4f}")
+        hover_y = "%{y:.4f}"
 
     figure.add_bar(
         x=chart_df["model"],
@@ -249,7 +294,7 @@ def build_group_bar_chart(
         hovertemplate=f"%{{x}}<br>{hover_y}<extra></extra>",
     )
     yaxis_cfg = (
-        {"tickformat": "+.2f", "ticksuffix": "%"} if sim_uplift else {"tickformat": ".2f"}
+        {"tickformat": "+.4f", "ticksuffix": "%"} if sim_uplift else {"tickformat": ".4f"}
     )
     figure.update_layout(
         title=group_label,
@@ -265,11 +310,11 @@ def build_group_bar_chart(
 def render_sidebar(model_options: list[str]) -> tuple[list[str], str, int]:
     stored_models = st.session_state.get("selected_models")
     if stored_models is None:
-        current_models = list(model_options)
+        current_models = default_model_selection(model_options)
     else:
         current_models = [m for m in stored_models if m in model_options]
         if not current_models:
-            current_models = list(model_options)
+            current_models = default_model_selection(model_options)
 
     with st.sidebar:
         st.header("Filters")
@@ -338,7 +383,7 @@ def render_sidebar(model_options: list[str]) -> tuple[list[str], str, int]:
         st.selectbox(
             "enrol quality (TER)",
             options=ENROL_QUALITY_OPTIONS,
-            format_func=lambda value: "不限" if value is None else f"<= {float(value):.2f}",
+            format_func=lambda value: "不限" if value is None else f"<= {float(value):.4f}",
             key="enrol_quality_max",
         )
         st.selectbox(
@@ -370,16 +415,21 @@ def render_sidebar(model_options: list[str]) -> tuple[list[str], str, int]:
 
 def main() -> None:
     ensure_session_defaults()
+    inject_dataframe_styles()
     selected_refresh_seconds = AUTO_REFRESH_OPTIONS.get(st.session_state["auto_refresh_label"], 0)
     refresh_token = int(time.time() // selected_refresh_seconds) if selected_refresh_seconds > 0 else 0
     state = load_dashboard_state(refresh_token)
     selected_models, selected_metric, auto_refresh_seconds = render_sidebar(state.models)
     schedule_auto_refresh(auto_refresh_seconds)
 
-    st.title("REAL-T BASE Dashboard")
-    st.caption(f"Source root: `{REPO_ROOT / 'output' / 'BASE'}`")
+    st.title("REAL-T Dashboard")
+    st.caption(f"BASE results root: `{REPO_ROOT / 'output' / 'BASE'}`")
+    st.caption(f"PRIMARY results root: `{REPO_ROOT / 'output' / 'PRIMARY'}`")
     st.caption(
         f"PRIMARY logic source: `{REPO_ROOT / 'datasets' / 'REAL-T' / 'metadata'}`"
+    )
+    st.caption(
+        "PRIMARY 预设会优先使用 `output/BASE`；只有当某模型不存在于 BASE 时，才回退到 `output/PRIMARY`。"
     )
     if state.enrol_quality_source_path:
         st.caption(f"Enrol quality source: `{state.enrol_quality_source_path}`")
@@ -390,7 +440,7 @@ def main() -> None:
         st.warning(state.enrol_quality_note)
 
     if not state.models:
-        st.error("No model directories were found under `output/BASE`.")
+        st.error("No model directories were found under `output/BASE` or `output/PRIMARY`.")
         st.stop()
 
     if not selected_models:
@@ -408,6 +458,10 @@ def main() -> None:
         enrol_quality_max=st.session_state["enrol_quality_max"],
         enrol_gt_length_filter=st.session_state["enrol_gt_length_filter"],
     )
+    effective_metric_long_df, effective_availability_df = resolve_effective_dashboard_view(
+        state,
+        filter_config.preset_name,
+    )
 
     subset_label = (
         f"Custom subset (based on {st.session_state['preset_name']})"
@@ -419,7 +473,7 @@ def main() -> None:
         f"Speaker ratio >= {filter_config.speaker_ratio_min}%",
         f"Transcript length > {filter_config.transcript_length_min}",
         (
-            f"Enrol TER <= {filter_config.enrol_quality_max:.2f}"
+            f"Enrol TER <= {filter_config.enrol_quality_max:.4f}"
             if filter_config.enrol_quality_max is not None
             else "Enrol TER: 不限"
         ),
@@ -435,7 +489,7 @@ def main() -> None:
     st.info(" | ".join(summary_items))
 
     filtered_rows = filter_metric_rows(
-        metric_long_df=state.metric_long_df,
+        metric_long_df=effective_metric_long_df,
         selected_models=selected_models,
         metric_key=selected_metric,
         filter_config=filter_config,
@@ -444,7 +498,7 @@ def main() -> None:
         filtered_metric_rows=filtered_rows,
         selected_models=selected_models,
         metric_key=selected_metric,
-        availability_df=state.availability_df,
+        availability_df=effective_availability_df,
     )
 
     metric_label = selectable_metric_label(selected_metric)
@@ -455,21 +509,36 @@ def main() -> None:
     else:
         overall_display_df = format_overall_table(aggregates["overall_df"])
     st.markdown("**Overall**")
-    st.dataframe(overall_display_df, width="stretch", hide_index=True)
+    st.dataframe(
+        overall_display_df,
+        width="stretch",
+        hide_index=True,
+        column_config=build_table_column_config(overall_display_df, data_column_start=0),
+    )
 
     st.markdown("**By Dataset**")
     if is_sim_ui_metric(selected_metric):
         ds_df = format_sim_group_summary_table(aggregates["dataset_summary_df"])
     else:
         ds_df = format_group_summary_table(aggregates["dataset_summary_df"])
-    st.dataframe(ds_df, width="stretch", hide_index=True)
+    st.dataframe(
+        ds_df,
+        width="stretch",
+        hide_index=True,
+        column_config=build_table_column_config(ds_df, data_column_start=2),
+    )
 
     st.markdown("**By Language**")
     if is_sim_ui_metric(selected_metric):
         lang_df = format_sim_group_summary_table(aggregates["language_summary_df"])
     else:
         lang_df = format_group_summary_table(aggregates["language_summary_df"])
-    st.dataframe(lang_df, width="stretch", hide_index=True)
+    st.dataframe(
+        lang_df,
+        width="stretch",
+        hide_index=True,
+        column_config=build_table_column_config(lang_df, data_column_start=2),
+    )
 
     chart_left, chart_right = st.columns([1.3, 1.0])
     with chart_left:
@@ -504,22 +573,45 @@ def main() -> None:
 
     with st.expander("Metric File Status", expanded=False):
         if is_sim_ui_metric(selected_metric):
-            status_mask = state.availability_df["metric_key"].isin(SIM_METRIC_KEYS)
+            status_mask = effective_availability_df["metric_key"].isin(SIM_METRIC_KEYS)
         else:
-            status_mask = state.availability_df["metric_key"] == selected_metric
-        status_df = state.availability_df[status_mask].copy()
+            status_mask = effective_availability_df["metric_key"] == selected_metric
+        status_df = effective_availability_df[status_mask].copy()
         status_df = status_df[status_df["model"].isin(selected_models)].copy()
+        status_df["model"] = status_df["model"].map(wrap_model_display_name)
         status_df = status_df[
-            ["model", "status_label", "row_count", "matched_row_count", "file_path", "message"]
+            [
+                "model",
+                "result_root",
+                "status_label",
+                "row_count",
+                "matched_row_count",
+                "file_path",
+                "message",
+            ]
         ].rename(
             columns={
+                "result_root": "source",
                 "status_label": "status",
                 "row_count": "csv_rows",
                 "matched_row_count": "matched_rows",
                 "file_path": "file",
             }
         )
-        st.dataframe(status_df, width="stretch", hide_index=True)
+        st.dataframe(
+            status_df,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "model": st.column_config.TextColumn("model", width="small"),
+                "source": st.column_config.TextColumn("source", width="small"),
+                "status": st.column_config.TextColumn("status", width="small"),
+                "csv_rows": st.column_config.TextColumn("csv_rows", width="small"),
+                "matched_rows": st.column_config.TextColumn("matched_rows", width="small"),
+                "file": st.column_config.TextColumn("file", width="large"),
+                "message": st.column_config.TextColumn("message", width="large"),
+            },
+        )
 
     if is_sim_ui_metric(selected_metric):
         st.caption(

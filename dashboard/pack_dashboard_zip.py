@@ -5,7 +5,7 @@
 默认打包内容：
 1) dashboard 根目录下的 Python 源码（.py）
 2) dashboard/enrol_quality/enrol_ter_full.csv（enrol 质量筛选所需）
-3) output/BASE/* 模型目录中的指标 CSV
+3) output/BASE/* 与 output/PRIMARY/* 模型目录中的指标 CSV
 4) datasets/REAL-T/BASE/*_meta.csv（除非 --no-metadata）
 5) datasets/REAL-T/metadata/*_meta.csv（PRIMARY/full 逻辑所需，除非 --no-metadata）
 
@@ -68,30 +68,33 @@ def collect_enrol_quality_csv(root: Path) -> tuple[list[Path], list[str]]:
     return [], warnings
 
 
-def collect_metric_csvs(output_base: Path) -> tuple[list[Path], list[str]]:
+def collect_metric_csvs(output_roots: list[Path]) -> tuple[list[Path], list[str]]:
     """收集存在的指标 CSV；缺失路径仅记入 warnings，不中断打包。"""
     warnings: list[str] = []
     found: list[Path] = []
-    if not output_base.is_dir():
-        warnings.append(f"未找到 output/BASE 目录，跳过指标 CSV: {output_base}")
-        return found, warnings
-
-    for model_dir in sorted(output_base.iterdir(), key=lambda p: p.name.lower()):
-        if not model_dir.is_dir():
+    for output_root in output_roots:
+        if not output_root.is_dir():
+            warnings.append(f"未找到结果目录，跳过指标 CSV: {output_root}")
             continue
-        model = model_dir.name
-        missing_suffixes: list[str] = []
-        for suffix in METRIC_FILE_SUFFIXES:
-            csv_path = model_dir / f"{model}{suffix}"
-            if csv_path.is_file():
-                found.append(csv_path)
-            else:
-                missing_suffixes.append(suffix)
-        if missing_suffixes:
-            warnings.append(
-                f"模型 {model!r} 缺少指标 CSV ({len(missing_suffixes)}/{len(METRIC_FILE_SUFFIXES)}): "
-                + ", ".join(missing_suffixes)
-            )
+
+        root_label = output_root.relative_to(repo_root()).as_posix()
+        for model_dir in sorted(output_root.iterdir(), key=lambda p: p.name.lower()):
+            if not model_dir.is_dir():
+                continue
+            model = model_dir.name
+            missing_suffixes: list[str] = []
+            for suffix in METRIC_FILE_SUFFIXES:
+                csv_path = model_dir / f"{model}{suffix}"
+                if csv_path.is_file():
+                    found.append(csv_path)
+                else:
+                    missing_suffixes.append(suffix)
+            if missing_suffixes:
+                warnings.append(
+                    f"{root_label} 下模型 {model!r} 缺少指标 CSV "
+                    f"({len(missing_suffixes)}/{len(METRIC_FILE_SUFFIXES)}): "
+                    + ", ".join(missing_suffixes)
+                )
     return found, warnings
 
 
@@ -109,7 +112,7 @@ def collect_metadata_csvs(metadata_dir: Path) -> tuple[list[Path], list[str]]:
 def main() -> int:
     root = repo_root()
     dashboard_dir = root / "dashboard"
-    output_base = root / "output" / "BASE"
+    output_roots = [root / "output" / "BASE", root / "output" / "PRIMARY"]
     metadata_dirs = [
         root / "datasets" / "REAL-T" / "BASE",
         root / "datasets" / "REAL-T" / "metadata",
@@ -151,7 +154,7 @@ def main() -> int:
     for path in enrol_quality_csvs:
         to_add.append((path, path.relative_to(root).as_posix()))
 
-    metric_paths, metric_warnings = collect_metric_csvs(output_base)
+    metric_paths, metric_warnings = collect_metric_csvs(output_roots)
     all_warnings.extend(metric_warnings)
     for path in metric_paths:
         to_add.append((path, path.relative_to(root).as_posix()))

@@ -1,6 +1,6 @@
 # REAL-T Dashboard
 
-This dashboard provides model-to-model comparison for results under `output/BASE`.
+This dashboard provides model-to-model comparison for results under `output/BASE` and `output/PRIMARY`.
 
 ## Conda Environment
 
@@ -52,7 +52,12 @@ Then open `http://<host>:8501` (on a remote machine, use the server’s IP or SS
 
 ## Data Rules
 
-- Only reads `output/BASE`.
+- Scans model directories from both `output/BASE` and `output/PRIMARY`.
+- Effective result-source rules:
+  - `BASE` preset only uses `output/BASE`.
+  - `PRIMARY` preset still prefers `output/BASE`.
+  - A model falls back to `output/PRIMARY` only when that model directory does not exist under `output/BASE`.
+  - Source selection is per model, not per metric CSV.
 - Uses `datasets/REAL-T/BASE/*_meta.csv` as the metric-join metadata source.
 - Uses `datasets/REAL-T/metadata/*_meta.csv` to derive `primary speaker` and the official `PRIMARY` subset with the same full-data logic as `REAL-T-Ext/generate_datasets/filter_subset.py`.
 - Enrol-level filters additionally read `dashboard/enrol_quality/enrol_ter_full.csv` by default.
@@ -60,9 +65,9 @@ Then open `http://<host>:8501` (on a remote machine, use the server’s IP or SS
   - Join key is `BASE.enrolment_speakers_utterance == enrol_ter_full.enrol_id`.
 - Excludes `Fisher` from all views and statistics.
 - `PRIMARY` is no longer derived by recomputing max `speaker_ratio` inside BASE.
-  - It is first identified from full metadata (`datasets/REAL-T/metadata`) and then applied to `output/BASE`.
+  - It is first identified from full metadata (`datasets/REAL-T/metadata`) and then applied to the effective model source (`output/BASE` or fallback `output/PRIMARY`).
   - This matches the official `filter_PRIMARY(full)` semantics instead of the old BASE-only approximation.
-- Custom subsets still read metrics from `output/BASE`, but their `primary speaker` semantics now follow the full metadata rather than BASE-local recomputation.
+- Custom subsets still use the same effective-source rules, while their `primary speaker` semantics follow the full metadata rather than BASE-local recomputation.
 
 ## Metrics
 

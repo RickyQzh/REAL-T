@@ -17,10 +17,14 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 OUTPUT_BASE_DIR = REPO_ROOT / "output" / "BASE"
+OUTPUT_PRIMARY_DIR = REPO_ROOT / "output" / "PRIMARY"
 METADATA_BASE_DIR = REPO_ROOT / "datasets" / "REAL-T" / "BASE"
 METADATA_FULL_DIR = REPO_ROOT / "datasets" / "REAL-T" / "metadata"
 DEFAULT_ENROL_TER_CSV = REPO_ROOT / "dashboard" / "enrol_quality" / "enrol_ter_full.csv"
 ENROL_TER_CSV_ENV_KEY = "REALT_ENROL_TER_FULL_CSV"
+
+RESULT_ROOT_BASE = "BASE"
+RESULT_ROOT_PRIMARY = "PRIMARY"
 
 # Virtual selectbox key: merges sim_enrol_mixture + sim_enrol_tse in the UI.
 SIM_UI_KEY = "sim"
@@ -186,6 +190,7 @@ class DashboardState:
     metadata_df: pd.DataFrame
     metric_long_df: pd.DataFrame
     availability_df: pd.DataFrame
+    model_source_df: pd.DataFrame
     models: list[str]
     transcript_length_note: str | None
     enrol_quality_note: str | None
@@ -214,6 +219,141 @@ def normalize_language(value: object) -> str:
     if text in {"en", "eng", "english"}:
         return "en"
     return text
+
+
+def _empty_model_source_df() -> pd.DataFrame:
+    return pd.DataFrame(columns=["model", "base_dir", "primary_dir"])
+
+
+def _empty_metric_long_df() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "dataset",
+            "lang_display",
+            "utterance_key",
+            "mixture_utterance",
+            "enrolment_speakers_utterance",
+            "total_number_of_speaker",
+            "is_primary_speaker",
+            "speaker_ratio",
+            "mixture_ratio",
+            "mixture_duration",
+            "transcript_length",
+            "enrol_ter",
+            "enrol_gt_length",
+            "is_official_primary",
+            "metric_value",
+            "model",
+            "metric_key",
+            "metric_label",
+            "metric_available",
+            "source_file",
+            "result_root",
+        ]
+    )
+
+
+def _empty_availability_df() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "model",
+            "metric_key",
+            "metric_label",
+            "result_root",
+            "status",
+            "status_label",
+            "file_path",
+            "row_count",
+            "matched_row_count",
+            "message",
+        ]
+    )
+
+
+def _optional_path(value: object) -> Path | None:
+    if value is None or pd.isna(value):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return Path(text)
+
+
+def _result_root_dir(result_root: str) -> Path:
+    if result_root == RESULT_ROOT_BASE:
+        return OUTPUT_BASE_DIR
+    if result_root == RESULT_ROOT_PRIMARY:
+        return OUTPUT_PRIMARY_DIR
+    raise ValueError(f"Unsupported result root: {result_root}")
+
+
+def _build_model_source_df() -> pd.DataFrame:
+    records: dict[str, dict[str, str | None]] = {}
+    root_specs = [
+        (RESULT_ROOT_BASE, OUTPUT_BASE_DIR, "base_dir"),
+        (RESULT_ROOT_PRIMARY, OUTPUT_PRIMARY_DIR, "primary_dir"),
+    ]
+    for _result_root, root_dir, column_name in root_specs:
+        if not root_dir.is_dir():
+            continue
+        for path in sorted(root_dir.iterdir(), key=lambda item: item.name.lower()):
+            if not path.is_dir():
+                continue
+            record = records.setdefault(
+                path.name,
+                {
+                    "model": path.name,
+                    "base_dir": None,
+                    "primary_dir": None,
+                },
+            )
+            record[column_name] = str(path.resolve())
+
+    if not records:
+        return _empty_model_source_df()
+
+    return pd.DataFrame.from_records(
+        sorted(records.values(), key=lambda item: str(item["model"]).lower())
+    )
+
+
+def _resolve_effective_result_root_for_model(
+    preset_name: str,
+    base_dir: object,
+    primary_dir: object,
+) -> str | None:
+    has_base = _optional_path(base_dir) is not None
+    has_primary = _optional_path(primary_dir) is not None
+    if preset_name == RESULT_ROOT_BASE:
+        return RESULT_ROOT_BASE if has_base else None
+    if preset_name == RESULT_ROOT_PRIMARY:
+        if has_base:
+            return RESULT_ROOT_BASE
+        if has_primary:
+            return RESULT_ROOT_PRIMARY
+        return None
+    raise ValueError(f"Unsupported preset_name: {preset_name}")
+
+
+def _resolve_effective_result_root_lookup(
+    model_source_df: pd.DataFrame,
+    preset_name: str,
+) -> dict[str, str | None]:
+    if model_source_df.empty:
+        return {}
+    lookup: dict[str, str | None] = {}
+    for row in model_source_df.to_dict(orient="records"):
+        lookup[str(row["model"])] = _resolve_effective_result_root_for_model(
+            preset_name=preset_name,
+            base_dir=row.get("base_dir"),
+            primary_dir=row.get("primary_dir"),
+        )
+    return lookup
+
+
+def _expected_metric_csv_path(model: str, metric_key: str, result_root: str) -> Path:
+    spec = METRIC_SPECS[metric_key]
+    return _result_root_dir(result_root) / model / f"{model}{spec['file_suffix']}"
 
 
 def make_utterance_key(mixture_utterance: object, enrolment_speakers_utterance: object) -> str:
@@ -515,13 +655,6 @@ def load_base_metadata() -> tuple[pd.DataFrame, str | None, str | None, str | No
     return metadata_df, note, enrol_quality_note, str(enrol_quality_path)
 
 
-def scan_model_dirs() -> list[Path]:
-    if not OUTPUT_BASE_DIR.is_dir():
-        return []
-    dirs = [path for path in OUTPUT_BASE_DIR.iterdir() if path.is_dir()]
-    return sorted(dirs, key=lambda item: item.name.lower())
-
-
 def _base_metadata_lookup(metadata_df: pd.DataFrame) -> pd.DataFrame:
     return metadata_df[
         [
@@ -547,6 +680,7 @@ def _status_record(
     model: str,
     metric_key: str,
     csv_path: Path,
+    result_root: str,
     status: str,
     row_count: int = 0,
     matched_row_count: int = 0,
@@ -556,6 +690,7 @@ def _status_record(
         "model": model,
         "metric_key": metric_key,
         "metric_label": METRIC_SPECS[metric_key]["label"],
+        "result_root": result_root,
         "status": status,
         "status_label": STATUS_LABELS.get(status, status.upper()),
         "file_path": str(csv_path),
@@ -570,11 +705,18 @@ def _load_metric_file(
     model_dir: Path,
     metric_key: str,
     metadata_lookup: pd.DataFrame,
+    result_root: str,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     spec = METRIC_SPECS[metric_key]
     csv_path = model_dir / f"{model}{spec['file_suffix']}"
     if not csv_path.is_file():
-        return pd.DataFrame(), _status_record(model, metric_key, csv_path, "missing")
+        return pd.DataFrame(), _status_record(
+            model,
+            metric_key,
+            csv_path,
+            result_root,
+            "missing",
+        )
 
     try:
         df = pd.read_csv(csv_path)
@@ -583,12 +725,19 @@ def _load_metric_file(
             model,
             metric_key,
             csv_path,
+            result_root,
             "error",
             message=str(exc),
         )
 
     if df.empty:
-        return pd.DataFrame(), _status_record(model, metric_key, csv_path, "empty")
+        return pd.DataFrame(), _status_record(
+            model,
+            metric_key,
+            csv_path,
+            result_root,
+            "empty",
+        )
 
     if spec["source_type"] == "ter":
         required = {"mixture_utterance", "enrolment_speakers_utterance", spec["value_column"]}
@@ -597,6 +746,7 @@ def _load_metric_file(
                 model,
                 metric_key,
                 csv_path,
+                result_root,
                 "error",
                 row_count=len(df),
                 message=f"Missing columns: {sorted(required.difference(df.columns))}",
@@ -615,6 +765,7 @@ def _load_metric_file(
                 model,
                 metric_key,
                 csv_path,
+                result_root,
                 "error",
                 row_count=len(df),
                 message=f"Missing columns: {sorted(required.difference(df.columns))}",
@@ -663,11 +814,13 @@ def _load_metric_file(
     metric_rows["metric_label"] = spec["label"]
     metric_rows["metric_available"] = True
     metric_rows["source_file"] = str(csv_path)
+    metric_rows["result_root"] = result_root
 
     return metric_rows, _status_record(
         model,
         metric_key,
         csv_path,
+        result_root,
         status,
         row_count=len(df),
         matched_row_count=len(metric_rows),
@@ -680,63 +833,111 @@ def load_dashboard_state(refresh_token: int = 0) -> DashboardState:
         load_base_metadata()
     )
     metadata_lookup = _base_metadata_lookup(metadata_df)
+    model_source_df = _build_model_source_df()
 
     metric_frames: list[pd.DataFrame] = []
     availability_records: list[dict[str, Any]] = []
-    model_dirs = scan_model_dirs()
+    for row in model_source_df.to_dict(orient="records"):
+        model = str(row["model"])
+        for result_root, dir_key in (
+            (RESULT_ROOT_BASE, "base_dir"),
+            (RESULT_ROOT_PRIMARY, "primary_dir"),
+        ):
+            model_dir = _optional_path(row.get(dir_key))
+            if model_dir is None:
+                continue
+            for metric_key in METRIC_SPECS:
+                metric_rows, availability = _load_metric_file(
+                    model=model,
+                    model_dir=model_dir,
+                    metric_key=metric_key,
+                    metadata_lookup=metadata_lookup,
+                    result_root=result_root,
+                )
+                availability_records.append(availability)
+                if not metric_rows.empty:
+                    metric_frames.append(metric_rows)
 
-    for model_dir in model_dirs:
-        model = model_dir.name
-        for metric_key in METRIC_SPECS:
-            metric_rows, availability = _load_metric_file(
-                model=model,
-                model_dir=model_dir,
-                metric_key=metric_key,
-                metadata_lookup=metadata_lookup,
-            )
-            availability_records.append(availability)
-            if not metric_rows.empty:
-                metric_frames.append(metric_rows)
-
-    if metric_frames:
-        metric_long_df = pd.concat(metric_frames, ignore_index=True)
-    else:
-        metric_long_df = pd.DataFrame(
-            columns=[
-                "dataset",
-                "lang_display",
-                "utterance_key",
-                "mixture_utterance",
-                "enrolment_speakers_utterance",
-                "total_number_of_speaker",
-                "is_primary_speaker",
-                "speaker_ratio",
-                "mixture_ratio",
-                "mixture_duration",
-                "transcript_length",
-                "enrol_ter",
-                "enrol_gt_length",
-                "is_official_primary",
-                "metric_value",
-                "model",
-                "metric_key",
-                "metric_label",
-                "metric_available",
-                "source_file",
-            ]
-        )
-
-    availability_df = pd.DataFrame(availability_records)
-    models = [path.name for path in model_dirs]
+    metric_long_df = (
+        pd.concat(metric_frames, ignore_index=True) if metric_frames else _empty_metric_long_df()
+    )
+    availability_df = (
+        pd.DataFrame(availability_records) if availability_records else _empty_availability_df()
+    )
+    models = model_source_df["model"].astype(str).tolist() if not model_source_df.empty else []
     return DashboardState(
         metadata_df=metadata_df,
         metric_long_df=metric_long_df,
         availability_df=availability_df,
+        model_source_df=model_source_df,
         models=models,
         transcript_length_note=transcript_length_note,
         enrol_quality_note=enrol_quality_note,
         enrol_quality_source_path=enrol_quality_source_path,
     )
+
+
+def resolve_effective_dashboard_view(
+    state: DashboardState,
+    preset_name: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    effective_root_lookup = _resolve_effective_result_root_lookup(
+        state.model_source_df,
+        preset_name,
+    )
+
+    if state.metric_long_df.empty:
+        effective_metric_long_df = _empty_metric_long_df()
+    else:
+        work = state.metric_long_df.copy()
+        work["effective_result_root"] = work["model"].map(effective_root_lookup)
+        effective_metric_long_df = work[
+            work["effective_result_root"].notna()
+            & work["result_root"].eq(work["effective_result_root"])
+        ].drop(columns=["effective_result_root"])
+
+    raw_availability_lookup = {
+        (str(row["model"]), str(row["metric_key"]), str(row["result_root"])): row
+        for row in state.availability_df.to_dict(orient="records")
+    }
+    resolved_availability_records: list[dict[str, Any]] = []
+    model_rows = state.model_source_df.to_dict(orient="records")
+    for row in model_rows:
+        model = str(row["model"])
+        effective_root = effective_root_lookup.get(model)
+        for metric_key in METRIC_SPECS:
+            if effective_root is None:
+                missing_root = RESULT_ROOT_BASE if preset_name == RESULT_ROOT_BASE else RESULT_ROOT_PRIMARY
+                resolved_availability_records.append(
+                    _status_record(
+                        model=model,
+                        metric_key=metric_key,
+                        csv_path=_expected_metric_csv_path(model, metric_key, missing_root),
+                        result_root=missing_root,
+                        status="missing",
+                    )
+                )
+                continue
+            record = raw_availability_lookup.get((model, metric_key, effective_root))
+            if record is None:
+                resolved_availability_records.append(
+                    _status_record(
+                        model=model,
+                        metric_key=metric_key,
+                        csv_path=_expected_metric_csv_path(model, metric_key, effective_root),
+                        result_root=effective_root,
+                        status="missing",
+                    )
+                )
+            else:
+                resolved_availability_records.append(record)
+
+    effective_availability_df = (
+        pd.DataFrame(resolved_availability_records)
+        if resolved_availability_records
+        else _empty_availability_df()
+    )
+    return effective_metric_long_df, effective_availability_df
 
 
 def build_filter_config(
@@ -910,9 +1111,13 @@ def _sim_slice_stats(p_slice: pd.DataFrame) -> tuple[int, float, float, float]:
 def format_metric_value(value: float) -> str:
     if np.isnan(value):
         return "NA"
-    if abs(float(value)) < 1.0:
-        return f"{float(value):.4f}"
-    return f"{float(value):.2f}"
+    return f"{float(value):.4f}"
+
+
+def wrap_model_display_name(value: object) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    return str(value).replace("_", "\n_")
 
 
 def format_sim_cell(mix_mean: float, tse_mean: float, uplift_pct: float) -> str:
@@ -920,7 +1125,7 @@ def format_sim_cell(mix_mean: float, tse_mean: float, uplift_pct: float) -> str:
         return "NA"
     arrow = "↑" if uplift_pct > 0 else "↓" if uplift_pct < 0 else ""
     sign = "+" if uplift_pct > 0 else ""
-    return f"{mix_mean:.2f} → {tse_mean:.2f} / {sign}{uplift_pct:.2f}% {arrow}".rstrip()
+    return f"{mix_mean:.4f} → {tse_mean:.4f} / {sign}{uplift_pct:.4f}% {arrow}".rstrip()
 
 
 def _sim_group_summary_records(
@@ -1219,6 +1424,8 @@ def format_group_summary_table(df: pd.DataFrame) -> pd.DataFrame:
         display_df[col] = display_df[col].map(
             lambda value: "NA" if pd.isna(value) else format_metric_value(float(value)),
         )
+    if len(cols) > 2:
+        display_df = display_df.rename(columns={col: wrap_model_display_name(col) for col in cols[2:]})
     return display_df
 
 
@@ -1226,6 +1433,7 @@ def format_overall_table(overall_df: pd.DataFrame) -> pd.DataFrame:
     if overall_df.empty:
         return overall_df
     display_df = overall_df.copy()
+    display_df["model"] = display_df["model"].map(wrap_model_display_name)
     display_df["count"] = display_df["count"].map(
         lambda value: "NA" if pd.isna(value) else str(int(value))
     )
@@ -1240,6 +1448,7 @@ def format_sim_overall_table(overall_df: pd.DataFrame) -> pd.DataFrame:
     if overall_df.empty:
         return overall_df
     display_df = overall_df.copy()
+    display_df["model"] = display_df["model"].map(wrap_model_display_name)
     display_df["count"] = display_df["count"].map(
         lambda value: "NA" if pd.isna(value) else str(int(value)),
     )
@@ -1263,4 +1472,7 @@ def format_sim_group_summary_table(df: pd.DataFrame) -> pd.DataFrame:
         display_df["count"] = display_df["count"].map(
             lambda value: "NA" if pd.isna(value) else str(int(value)),
         )
+    cols = list(display_df.columns)
+    if len(cols) > 2:
+        display_df = display_df.rename(columns={col: wrap_model_display_name(col) for col in cols[2:]})
     return display_df
