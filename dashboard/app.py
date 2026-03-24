@@ -82,6 +82,16 @@ SPEAKER_RATIO_OPTIONS = [20, 30, 40, 50, 60, 70, 80]
 MIXTURE_RATIO_OPTIONS = [None, 10, 20, 30, 40, 50, 60, 70, 80, 90]
 MIXTURE_DURATION_OPTIONS = [None, 10, 20, 30, 40, 50, 60]
 TRANSCRIPT_LENGTH_OPTIONS = [5, 10, 20, 30, 40, 50]
+ENROL_QUALITY_OPTIONS = [None, 0.05, 0.10, 0.15, 0.20, 0.30]
+ENROL_GT_LENGTH_OPTIONS = ["all", "0-5", "ge5", "ge10", "ge15", "ge20"]
+ENROL_GT_LENGTH_LABELS = {
+    "all": "不限",
+    "0-5": "0-5",
+    "ge5": ">= 5",
+    "ge10": ">= 10",
+    "ge15": ">= 15",
+    "ge20": ">= 20",
+}
 
 
 st.set_page_config(
@@ -325,6 +335,18 @@ def render_sidebar(model_options: list[str]) -> tuple[list[str], str, int]:
             format_func=lambda value: f"> {value}",
             key="transcript_length_min",
         )
+        st.selectbox(
+            "enrol quality (TER)",
+            options=ENROL_QUALITY_OPTIONS,
+            format_func=lambda value: "不限" if value is None else f"<= {float(value):.2f}",
+            key="enrol_quality_max",
+        )
+        st.selectbox(
+            "enrol length (GT词数)",
+            options=ENROL_GT_LENGTH_OPTIONS,
+            format_func=lambda value: ENROL_GT_LENGTH_LABELS.get(value, str(value)),
+            key="enrol_gt_length_filter",
+        )
 
         st.divider()
         st.subheader("Refresh")
@@ -369,12 +391,15 @@ def main() -> None:
         st.stop()
 
     filter_config = build_filter_config(
+        preset_name=st.session_state["preset_name"],
         selected_speakers=st.session_state["selected_speakers"],
         speaker_scope=st.session_state["speaker_scope"],
         speaker_ratio_min=st.session_state["speaker_ratio_min"],
         mixture_ratio_min=st.session_state["mixture_ratio_min"],
         mixture_duration_max=st.session_state["mixture_duration_max"],
         transcript_length_min=st.session_state["transcript_length_min"],
+        enrol_quality_max=st.session_state["enrol_quality_max"],
+        enrol_gt_length_filter=st.session_state["enrol_gt_length_filter"],
     )
 
     subset_label = (

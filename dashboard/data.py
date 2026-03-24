@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -17,6 +18,9 @@ if str(REPO_ROOT) not in sys.path:
 
 OUTPUT_BASE_DIR = REPO_ROOT / "output" / "BASE"
 METADATA_BASE_DIR = REPO_ROOT / "datasets" / "REAL-T" / "BASE"
+METADATA_FULL_DIR = REPO_ROOT / "datasets" / "REAL-T" / "metadata"
+DEFAULT_ENROL_TER_CSV = REPO_ROOT / "dashboard" / "enrol_quality" / "enrol_ter_full.csv"
+ENROL_TER_CSV_ENV_KEY = "REALT_ENROL_TER_FULL_CSV"
 
 # Virtual selectbox key: merges sim_enrol_mixture + sim_enrol_tse in the UI.
 SIM_UI_KEY = "sim"
@@ -42,6 +46,8 @@ FILTER_KEYS = [
     "mixture_ratio_min",
     "mixture_duration_max",
     "transcript_length_min",
+    "enrol_quality_max",
+    "enrol_gt_length_filter",
 ]
 
 PRESET_DEFAULTS: dict[str, dict[str, Any]] = {
@@ -52,6 +58,8 @@ PRESET_DEFAULTS: dict[str, dict[str, Any]] = {
         "mixture_ratio_min": None,
         "mixture_duration_max": None,
         "transcript_length_min": 5,
+        "enrol_quality_max": None,
+        "enrol_gt_length_filter": "all",
     },
     "PRIMARY": {
         "selected_speakers": SPEAKER_COUNT_OPTIONS.copy(),
@@ -60,6 +68,8 @@ PRESET_DEFAULTS: dict[str, dict[str, Any]] = {
         "mixture_ratio_min": None,
         "mixture_duration_max": 30,
         "transcript_length_min": 5,
+        "enrol_quality_max": None,
+        "enrol_gt_length_filter": "all",
     },
 }
 
@@ -178,23 +188,28 @@ class DashboardState:
     availability_df: pd.DataFrame
     models: list[str]
     transcript_length_note: str | None
+    enrol_quality_note: str | None
+    enrol_quality_source_path: str | None
 
 
 @dataclass(frozen=True)
 class FilterConfig:
+    preset_name: str
     selected_speakers: tuple[int, ...]
     speaker_scope: str
     speaker_ratio_min: int
     mixture_ratio_min: int | None
     mixture_duration_max: int | None
     transcript_length_min: int
+    enrol_quality_max: float | None
+    enrol_gt_length_filter: str
 
 
 def normalize_language(value: object) -> str:
     if value is None or pd.isna(value):
         return ""
     text = str(value).strip().lower()
-    if text in {"zh", "zho", "chs", "cn", "chinese", "mandarin"}:
+    if text in {"zh", "zho", "chs", "ch", "cn", "chinese", "mandarin"}:
         return "chs"
     if text in {"en", "eng", "english"}:
         return "en"
@@ -245,9 +260,144 @@ def _get_transcript_length_normalizer() -> tuple[Any, str | None]:
         return compute_length, note
 
 
+def _resolve_enrol_ter_csv_path() -> Path:
+    env_path = os.getenv(ENROL_TER_CSV_ENV_KEY, "").strip()
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+    return DEFAULT_ENROL_TER_CSV.resolve()
+
+
 @lru_cache(maxsize=1)
-def load_base_metadata() -> tuple[pd.DataFrame, str | None]:
+def _load_primary_annotations_from_full() -> pd.DataFrame:
+    cols = ["utterance_key", "is_primary_speaker_from_full", "is_official_primary"]
+    if not METADATA_FULL_DIR.is_dir():
+        return pd.DataFrame(columns=cols)
+
+    length_fn, _ = _get_transcript_length_normalizer()
+    frames: list[pd.DataFrame] = []
+    for csv_path in sorted(METADATA_FULL_DIR.glob("*_meta.csv")):
+        if csv_path.stem == "Fisher_meta":
+            continue
+        df = pd.read_csv(csv_path)
+        if df.empty:
+            continue
+        work = df.copy()
+        work["dataset"] = work["source"]
+        work = work[work["dataset"].isin(DATASET_ORDER)].copy()
+        work["utterance_key"] = work.apply(
+            lambda row: make_utterance_key(
+                row["mixture_utterance"], row["enrolment_speakers_utterance"]
+            ),
+            axis=1,
+        )
+        work["speaker_ratio"] = pd.to_numeric(work["speaker_ratio"], errors="coerce")
+        work["mixture_duration"] = pd.to_numeric(work["mixture_duration"], errors="coerce")
+        work["transcript_length"] = work.apply(
+            lambda row: length_fn(row["ground_truth_transcript"], row["language"]), axis=1
+        )
+        frames.append(
+            work[
+                [
+                    "utterance_key",
+                    "mixture_utterance",
+                    "speaker_ratio",
+                    "mixture_duration",
+                    "transcript_length",
+                ]
+            ]
+        )
+
+    if not frames:
+        return pd.DataFrame(columns=cols)
+
+    full_df = pd.concat(frames, ignore_index=True)
+    max_ratio = full_df.groupby("mixture_utterance")["speaker_ratio"].transform("max")
+    full_df["is_primary_speaker_from_full"] = full_df["speaker_ratio"].eq(max_ratio)
+    full_df["is_official_primary"] = (
+        full_df["is_primary_speaker_from_full"]
+        & (full_df["speaker_ratio"] > 0.20)
+        & (full_df["transcript_length"] > 5)
+        & (full_df["mixture_duration"] <= 30)
+    )
+    return (
+        full_df[cols]
+        .groupby("utterance_key", as_index=False)
+        .max()
+        .sort_values("utterance_key")
+        .reset_index(drop=True)
+    )
+
+
+@lru_cache(maxsize=1)
+def _load_enrol_quality_annotations() -> tuple[pd.DataFrame, str | None, Path]:
+    path = _resolve_enrol_ter_csv_path()
+    cols = [
+        "enrol_id",
+        "enrol_ter",
+        "enrol_gt_length",
+        "enrol_quality_dataset",
+        "enrol_quality_lang_display",
+    ]
+    if not path.is_file():
+        note = (
+            f"Enrol quality CSV not found at `{path}`. "
+            "New filters `enrol quality` / `enrol length` will only be effective when this file exists."
+        )
+        return pd.DataFrame(columns=cols), note, path
+
+    try:
+        df = pd.read_csv(path)
+    except Exception as exc:  # pragma: no cover - depends on local file
+        note = (
+            f"Failed to read enrol quality CSV `{path}`: {exc}. "
+            "New enrol-level filters are unavailable."
+        )
+        return pd.DataFrame(columns=cols), note, path
+
+    required = {"enrol_id", "dataset", "ch_en", "ground_truth_transcript", "TER"}
+    if not required.issubset(df.columns):
+        note = (
+            f"Enrol quality CSV `{path}` is missing columns: "
+            f"{sorted(required.difference(df.columns))}. New enrol-level filters are unavailable."
+        )
+        return pd.DataFrame(columns=cols), note, path
+
+    length_fn, length_note = _get_transcript_length_normalizer()
+
+    work = df.copy()
+    work["enrol_id"] = work["enrol_id"].astype(str)
+    work["enrol_ter"] = pd.to_numeric(work["TER"], errors="coerce")
+    work["enrol_quality_dataset"] = work["dataset"].astype(str)
+    work["enrol_quality_lang_display"] = work["ch_en"].map(normalize_language)
+
+    def _gt_len(row: pd.Series) -> int:
+        lang = "zh" if row["enrol_quality_lang_display"] == "chs" else "en"
+        return length_fn(row["ground_truth_transcript"], lang)
+
+    work["enrol_gt_length"] = work.apply(_gt_len, axis=1)
+    work = work[cols].copy()
+
+    duplicated = int(work.duplicated(subset=["enrol_id"]).sum())
+    if duplicated > 0:
+        work = work.sort_values(["enrol_id"]).drop_duplicates(subset=["enrol_id"], keep="first")
+
+    note_parts: list[str] = []
+    if duplicated > 0:
+        note_parts.append(
+            f"Enrol quality CSV `{path}` has {duplicated} duplicate enrol_id rows; kept first occurrence."
+        )
+    if length_note:
+        note_parts.append(length_note)
+    note = " ".join(note_parts) if note_parts else None
+
+    return work.reset_index(drop=True), note, path
+
+
+@lru_cache(maxsize=1)
+def load_base_metadata() -> tuple[pd.DataFrame, str | None, str | None, str | None]:
     length_fn, note = _get_transcript_length_normalizer()
+    enrol_quality_df, enrol_quality_note, enrol_quality_path = _load_enrol_quality_annotations()
+    primary_annotations_df = _load_primary_annotations_from_full()
 
     frames: list[pd.DataFrame] = []
     for csv_path in sorted(METADATA_BASE_DIR.glob("*_meta.csv")):
@@ -275,8 +425,35 @@ def load_base_metadata() -> tuple[pd.DataFrame, str | None]:
         work["transcript_length"] = work.apply(
             lambda row: length_fn(row["ground_truth_transcript"], row["language"]), axis=1
         )
-        max_ratio = work.groupby("mixture_utterance")["speaker_ratio"].transform("max")
-        work["is_primary_speaker"] = work["speaker_ratio"].eq(max_ratio)
+        if not enrol_quality_df.empty:
+            work = work.merge(
+                enrol_quality_df,
+                left_on="enrolment_speakers_utterance",
+                right_on="enrol_id",
+                how="left",
+            )
+            work["enrol_dataset_match"] = work["dataset"].eq(work["enrol_quality_dataset"])
+        else:
+            work["enrol_ter"] = np.nan
+            work["enrol_gt_length"] = np.nan
+        base_max_ratio = work.groupby("mixture_utterance")["speaker_ratio"].transform("max")
+        work["is_primary_speaker_base"] = work["speaker_ratio"].eq(base_max_ratio)
+        if not primary_annotations_df.empty:
+            work = work.merge(primary_annotations_df, on="utterance_key", how="left")
+            work["is_primary_speaker"] = (
+                work["is_primary_speaker_from_full"]
+                .fillna(work["is_primary_speaker_base"])
+                .astype(bool)
+            )
+            work["is_official_primary"] = work["is_official_primary"].fillna(False).astype(bool)
+        else:
+            work["is_primary_speaker"] = work["is_primary_speaker_base"]
+            work["is_official_primary"] = (
+                work["is_primary_speaker"]
+                & (work["speaker_ratio"] > 0.20)
+                & (work["transcript_length"] > 5)
+                & (work["mixture_duration"] <= 30)
+            )
         frames.append(
             work[
                 [
@@ -297,6 +474,9 @@ def load_base_metadata() -> tuple[pd.DataFrame, str | None]:
                     "mixture_duration",
                     "ground_truth_transcript",
                     "transcript_length",
+                    "enrol_ter",
+                    "enrol_gt_length",
+                    "is_official_primary",
                     "is_primary_speaker",
                 ]
             ]
@@ -322,14 +502,17 @@ def load_base_metadata() -> tuple[pd.DataFrame, str | None]:
                 "mixture_duration",
                 "ground_truth_transcript",
                 "transcript_length",
+                "enrol_ter",
+                "enrol_gt_length",
+                "is_official_primary",
                 "is_primary_speaker",
             ]
         )
-        return empty_df, note
+        return empty_df, note, enrol_quality_note, str(enrol_quality_path)
 
     metadata_df = pd.concat(frames, ignore_index=True)
     metadata_df = metadata_df.drop_duplicates(subset=["utterance_key"]).reset_index(drop=True)
-    return metadata_df, note
+    return metadata_df, note, enrol_quality_note, str(enrol_quality_path)
 
 
 def scan_model_dirs() -> list[Path]:
@@ -353,6 +536,9 @@ def _base_metadata_lookup(metadata_df: pd.DataFrame) -> pd.DataFrame:
             "mixture_ratio",
             "mixture_duration",
             "transcript_length",
+            "enrol_ter",
+            "enrol_gt_length",
+            "is_official_primary",
         ]
     ].copy()
 
@@ -466,6 +652,9 @@ def _load_metric_file(
             "mixture_ratio",
             "mixture_duration",
             "transcript_length",
+            "enrol_ter",
+            "enrol_gt_length",
+            "is_official_primary",
             "metric_value",
         ]
     ].copy()
@@ -487,7 +676,9 @@ def _load_metric_file(
 
 @lru_cache(maxsize=8)
 def load_dashboard_state(refresh_token: int = 0) -> DashboardState:
-    metadata_df, transcript_length_note = load_base_metadata()
+    metadata_df, transcript_length_note, enrol_quality_note, enrol_quality_source_path = (
+        load_base_metadata()
+    )
     metadata_lookup = _base_metadata_lookup(metadata_df)
 
     metric_frames: list[pd.DataFrame] = []
@@ -523,6 +714,9 @@ def load_dashboard_state(refresh_token: int = 0) -> DashboardState:
                 "mixture_ratio",
                 "mixture_duration",
                 "transcript_length",
+                "enrol_ter",
+                "enrol_gt_length",
+                "is_official_primary",
                 "metric_value",
                 "model",
                 "metric_key",
@@ -540,24 +734,32 @@ def load_dashboard_state(refresh_token: int = 0) -> DashboardState:
         availability_df=availability_df,
         models=models,
         transcript_length_note=transcript_length_note,
+        enrol_quality_note=enrol_quality_note,
+        enrol_quality_source_path=enrol_quality_source_path,
     )
 
 
 def build_filter_config(
+    preset_name: str,
     selected_speakers: list[int],
     speaker_scope: str,
     speaker_ratio_min: int,
     mixture_ratio_min: int | None,
     mixture_duration_max: int | None,
     transcript_length_min: int,
+    enrol_quality_max: float | None,
+    enrol_gt_length_filter: str,
 ) -> FilterConfig:
     return FilterConfig(
+        preset_name=preset_name,
         selected_speakers=tuple(sorted(selected_speakers)),
         speaker_scope=speaker_scope,
         speaker_ratio_min=speaker_ratio_min,
         mixture_ratio_min=mixture_ratio_min,
         mixture_duration_max=mixture_duration_max,
         transcript_length_min=transcript_length_min,
+        enrol_quality_max=enrol_quality_max,
+        enrol_gt_length_filter=enrol_gt_length_filter,
     )
 
 
@@ -570,6 +772,8 @@ def is_custom_subset(preset_name: str, filter_config: FilterConfig) -> bool:
         "mixture_ratio_min": filter_config.mixture_ratio_min,
         "mixture_duration_max": filter_config.mixture_duration_max,
         "transcript_length_min": filter_config.transcript_length_min,
+        "enrol_quality_max": filter_config.enrol_quality_max,
+        "enrol_gt_length_filter": filter_config.enrol_gt_length_filter,
     }
     return any(current[key] != defaults[key] for key in FILTER_KEYS)
 
@@ -597,11 +801,33 @@ def filter_metric_rows(
     if work.empty:
         return work
 
+    if filter_config.preset_name == "PRIMARY":
+        work = work[work["is_official_primary"]].copy()
     work = work[work["total_number_of_speaker"].isin(filter_config.selected_speakers)].copy()
     if filter_config.speaker_scope == "primary":
         work = work[work["is_primary_speaker"]].copy()
     work = work[work["speaker_ratio"] >= filter_config.speaker_ratio_min / 100.0].copy()
     work = work[work["transcript_length"] > filter_config.transcript_length_min].copy()
+    if filter_config.enrol_quality_max is not None:
+        work = work[
+            work["enrol_ter"].notna() & (work["enrol_ter"] <= float(filter_config.enrol_quality_max))
+        ].copy()
+
+    length_mode = str(filter_config.enrol_gt_length_filter)
+    if length_mode != "all":
+        lengths = pd.to_numeric(work["enrol_gt_length"], errors="coerce")
+        if length_mode == "0-5":
+            work = work[lengths.between(0, 5, inclusive="both")].copy()
+        elif length_mode == "ge5":
+            work = work[lengths >= 5].copy()
+        elif length_mode == "ge10":
+            work = work[lengths >= 10].copy()
+        elif length_mode == "ge15":
+            work = work[lengths >= 15].copy()
+        elif length_mode == "ge20":
+            work = work[lengths >= 20].copy()
+        else:
+            raise ValueError(f"Unsupported enrol_gt_length_filter: {length_mode}")
 
     if filter_config.mixture_ratio_min is not None:
         work = work[work["mixture_ratio"] >= filter_config.mixture_ratio_min / 100.0].copy()
