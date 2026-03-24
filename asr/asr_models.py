@@ -72,13 +72,11 @@ class WhisperASR:
             asr_model_out = self.model.generate(
                 **whisper_inputs, 
                 forced_decoder_ids=forced_decoder_ids,
-                return_timestamps="word",
-                return_segments=True
             )
 
-            transcripts = self.processor.batch_decode(asr_model_out['sequences'], output_offsets=True, skip_special_tokens=True)
+            transcripts = self.processor.batch_decode(asr_model_out, skip_special_tokens=True)
 
-        return transcripts[0]['text'].strip()
+        return transcripts[0].strip()
 
 class FireRedASR_AED_L_ASRModel:
     def __init__(self, model_name="aed", model_path=None, device="cuda:0"):
