@@ -50,6 +50,13 @@ streamlit run dashboard/app.py --server.address 0.0.0.0 --server.port 8501
 
 Then open `http://<host>:8501` (on a remote machine, use the server’s IP or SSH port forwarding).
 
+## Pages
+
+- Dashboard home: `http://<host>:8501/`
+- Samples page: `http://<host>:8501/samples`
+- Click the `Samples` button on the main dashboard to keep the current session filters when navigating.
+- Directly opening `/samples` starts from the normal default session state.
+
 ## Data Rules
 
 - Scans model directories from both `output/BASE` and `output/PRIMARY`.
@@ -88,6 +95,8 @@ The dashboard supports these 11 single-select metrics:
 ## Notes
 
 - Missing or unfinished metric CSVs are tolerated. Tables show `NA`, and charts skip missing values.
+- The `Samples` page shows one selected model and one selected dataset at a time, while reusing the same preset and threshold filters as the main dashboard.
+- Sample audio players use the paths already recorded in the metric CSVs. Missing or stale paths are shown as non-fatal `audio missing` messages.
 - The recommended environment above includes the dependencies needed for `utils.asr_metrics.normalizer_for_transcript`, so transcript-length filtering should use the repo's strict normalization logic instead of the dashboard fallback path.
 - Non-SIM tables keep extra precision for small values so the mean is easier to compare with `*_TER.txt` / `*_summary.txt`.
 - New sidebar filters:

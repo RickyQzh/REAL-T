@@ -19,14 +19,12 @@ for path in (REPO_ROOT, APP_DIR):
 try:
     from dashboard.data import (
         DATASET_ORDER,
-        FILTER_KEYS,
         LANGUAGE_ORDER,
         METRIC_SPECS,
-        PRESET_DEFAULTS,
         SIM_METRIC_KEYS,
-        SPEAKER_COUNT_OPTIONS,
         aggregate_metric_rows,
         build_filter_config,
+        clear_dashboard_caches,
         filter_metric_rows,
         format_group_summary_table,
         format_overall_table,
@@ -35,22 +33,39 @@ try:
         is_custom_subset,
         is_sim_ui_metric,
         iter_selectable_metric_keys,
-        load_dashboard_state,
-        normalize_sidebar_metric_key,
-        resolve_effective_dashboard_view,
+        load_dashboard_catalog,
+        load_effective_metric_view,
         selectable_metric_label,
+    )
+    from dashboard.samples_page import clear_samples_page_runtime_caches, render_samples_page
+    from dashboard.ui_shared import (
+        AUTO_REFRESH_OPTIONS,
+        ENROL_GT_LENGTH_LABELS,
+        ENROL_GT_LENGTH_OPTIONS,
+        ENROL_QUALITY_OPTIONS,
+        MIXTURE_DURATION_OPTIONS,
+        MIXTURE_RATIO_OPTIONS,
+        PAGE_REFS,
+        SPEAKER_COUNT_OPTIONS,
+        SPEAKER_RATIO_OPTIONS,
+        SPEAKER_SCOPE_LABELS,
+        SPEAKER_SCOPE_OPTIONS,
+        TRANSCRIPT_LENGTH_OPTIONS,
+        build_filter_summary_items,
+        default_model_selection,
+        ensure_session_defaults,
+        handle_preset_change,
+        render_page_header,
     )
 except ModuleNotFoundError:
     from data import (
         DATASET_ORDER,
-        FILTER_KEYS,
         LANGUAGE_ORDER,
         METRIC_SPECS,
-        PRESET_DEFAULTS,
         SIM_METRIC_KEYS,
-        SPEAKER_COUNT_OPTIONS,
         aggregate_metric_rows,
         build_filter_config,
+        clear_dashboard_caches,
         filter_metric_rows,
         format_group_summary_table,
         format_overall_table,
@@ -59,48 +74,30 @@ except ModuleNotFoundError:
         is_custom_subset,
         is_sim_ui_metric,
         iter_selectable_metric_keys,
-        load_dashboard_state,
-        normalize_sidebar_metric_key,
-        resolve_effective_dashboard_view,
+        load_dashboard_catalog,
+        load_effective_metric_view,
         selectable_metric_label,
     )
-
-
-AUTO_REFRESH_OPTIONS = {
-    "Pause": 0,
-    "15s": 15,
-    "30s": 30,
-    "60s": 60,
-    "120s": 120,
-}
-
-SPEAKER_SCOPE_OPTIONS = {
-    "全部说话人": "all",
-    "主说话人": "primary",
-}
-SPEAKER_SCOPE_LABELS = {value: key for key, value in SPEAKER_SCOPE_OPTIONS.items()}
-
-SPEAKER_RATIO_OPTIONS = [20, 30, 40, 50, 60, 70, 80]
-MIXTURE_RATIO_OPTIONS = [None, 10, 20, 30, 40, 50, 60, 70, 80, 90]
-MIXTURE_DURATION_OPTIONS = [None, 10, 20, 30, 40, 50, 60]
-TRANSCRIPT_LENGTH_OPTIONS = [5, 10, 20, 30, 40, 50]
-ENROL_QUALITY_OPTIONS = [None, 0.05, 0.10, 0.15, 0.20, 0.30]
-ENROL_GT_LENGTH_OPTIONS = ["all", "0-5", "ge5", "ge10", "ge15", "ge20"]
-ENROL_GT_LENGTH_LABELS = {
-    "all": "不限",
-    "0-5": "0-5",
-    "ge5": ">= 5",
-    "ge10": ">= 10",
-    "ge15": ">= 15",
-    "ge20": ">= 20",
-}
-
-DEFAULT_SELECTED_MODELS = [
-    "bsrnn_vox1",
-    "tfmap_context_vox_old",
-    "lauratse_enrol5",
-    "alphaflowtse_noisy_ECAPAMLP_steps1",
-]
+    from samples_page import clear_samples_page_runtime_caches, render_samples_page
+    from ui_shared import (
+        AUTO_REFRESH_OPTIONS,
+        ENROL_GT_LENGTH_LABELS,
+        ENROL_GT_LENGTH_OPTIONS,
+        ENROL_QUALITY_OPTIONS,
+        MIXTURE_DURATION_OPTIONS,
+        MIXTURE_RATIO_OPTIONS,
+        PAGE_REFS,
+        SPEAKER_COUNT_OPTIONS,
+        SPEAKER_RATIO_OPTIONS,
+        SPEAKER_SCOPE_LABELS,
+        SPEAKER_SCOPE_OPTIONS,
+        TRANSCRIPT_LENGTH_OPTIONS,
+        build_filter_summary_items,
+        default_model_selection,
+        ensure_session_defaults,
+        handle_preset_change,
+        render_page_header,
+    )
 
 
 st.set_page_config(
@@ -110,61 +107,8 @@ st.set_page_config(
 )
 
 
-def apply_preset_to_state(preset_name: str) -> None:
-    defaults = PRESET_DEFAULTS[preset_name]
-    for key in FILTER_KEYS:
-        value = defaults[key]
-        st.session_state[key] = value.copy() if isinstance(value, list) else value
-    st.session_state["speaker_scope_label"] = SPEAKER_SCOPE_LABELS[defaults["speaker_scope"]]
-
-
-def handle_preset_change() -> None:
-    apply_preset_to_state(st.session_state["preset_name"])
-
-
-def ensure_session_defaults() -> None:
-    if "preset_name" not in st.session_state:
-        st.session_state["preset_name"] = "PRIMARY"
-        apply_preset_to_state("PRIMARY")
-    else:
-        for key in FILTER_KEYS:
-            if key not in st.session_state:
-                default_value = PRESET_DEFAULTS[st.session_state["preset_name"]][key]
-                st.session_state[key] = (
-                    default_value.copy() if isinstance(default_value, list) else default_value
-                )
-
-    if "selected_metric" not in st.session_state:
-        st.session_state["selected_metric"] = next(iter(iter_selectable_metric_keys()))
-    else:
-        st.session_state["selected_metric"] = normalize_sidebar_metric_key(
-            st.session_state["selected_metric"]
-        )
-        valid = set(iter_selectable_metric_keys())
-        if st.session_state["selected_metric"] not in valid:
-            st.session_state["selected_metric"] = next(iter(iter_selectable_metric_keys()))
-    # 默认 Pause：否则 sidebar 里「自动刷新」为 30s 时，每 30s 会整页 reload（schedule_auto_refresh）。
-    if "auto_refresh_label" not in st.session_state:
-        st.session_state["auto_refresh_label"] = "Pause"
-    if "bar_group_label" not in st.session_state:
-        st.session_state["bar_group_label"] = "Overall"
-    if "speaker_scope_label" not in st.session_state:
-        st.session_state["speaker_scope_label"] = SPEAKER_SCOPE_LABELS[st.session_state["speaker_scope"]]
-
-
-def format_optional_threshold(value: int | None, prefix: str) -> str:
-    if value is None:
-        return "不限"
-    return f"{prefix}{value}"
-
-
 def wrap_model_display_name(value: str) -> str:
     return value.replace("_", "\n_")
-
-
-def default_model_selection(model_options: list[str]) -> list[str]:
-    preferred = [model for model in DEFAULT_SELECTED_MODELS if model in model_options]
-    return preferred if preferred else list(model_options)
 
 
 def build_table_column_config(df: pd.DataFrame, data_column_start: int = 2) -> dict[str, object]:
@@ -307,6 +251,21 @@ def build_group_bar_chart(
     return figure
 
 
+@st.cache_resource(show_spinner=False)
+def get_dashboard_catalog_cached(refresh_token: int) -> object:
+    return load_dashboard_catalog(refresh_token)
+
+
+@st.cache_resource(show_spinner=False)
+def get_metric_view_cached(
+    preset_name: str,
+    metric_key: str,
+    selected_models: tuple[str, ...],
+    refresh_token: int,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    return load_effective_metric_view(preset_name, metric_key, selected_models, refresh_token)
+
+
 def render_sidebar(model_options: list[str]) -> tuple[list[str], str, int]:
     stored_models = st.session_state.get("selected_models")
     if stored_models is None:
@@ -402,12 +361,18 @@ def render_sidebar(model_options: list[str]) -> tuple[list[str], str, int]:
         )
         col_left, col_right = st.columns(2)
         with col_left:
-            if st.button("Refresh now", width="stretch"):
-                load_dashboard_state.cache_clear()
+            if st.button("Refresh now"):
+                clear_dashboard_caches()
+                get_dashboard_catalog_cached.clear()
+                get_metric_view_cached.clear()
+                clear_samples_page_runtime_caches()
                 st.rerun()
         with col_right:
-            if st.button("Clear cache", width="stretch"):
-                load_dashboard_state.cache_clear()
+            if st.button("Clear cache"):
+                clear_dashboard_caches()
+                get_dashboard_catalog_cached.clear()
+                get_metric_view_cached.clear()
+                clear_samples_page_runtime_caches()
                 st.rerun()
 
     return selected_models, selected_metric, AUTO_REFRESH_OPTIONS[auto_refresh_label]
@@ -418,11 +383,11 @@ def main() -> None:
     inject_dataframe_styles()
     selected_refresh_seconds = AUTO_REFRESH_OPTIONS.get(st.session_state["auto_refresh_label"], 0)
     refresh_token = int(time.time() // selected_refresh_seconds) if selected_refresh_seconds > 0 else 0
-    state = load_dashboard_state(refresh_token)
-    selected_models, selected_metric, auto_refresh_seconds = render_sidebar(state.models)
+    catalog = get_dashboard_catalog_cached(refresh_token)
+    selected_models, selected_metric, auto_refresh_seconds = render_sidebar(catalog.models)
     schedule_auto_refresh(auto_refresh_seconds)
 
-    st.title("REAL-T Dashboard")
+    render_page_header("REAL-T Dashboard", "Samples", "samples")
     st.caption(f"BASE results root: `{REPO_ROOT / 'output' / 'BASE'}`")
     st.caption(f"PRIMARY results root: `{REPO_ROOT / 'output' / 'PRIMARY'}`")
     st.caption(
@@ -431,15 +396,15 @@ def main() -> None:
     st.caption(
         "PRIMARY 预设会优先使用 `output/BASE`；只有当某模型不存在于 BASE 时，才回退到 `output/PRIMARY`。"
     )
-    if state.enrol_quality_source_path:
-        st.caption(f"Enrol quality source: `{state.enrol_quality_source_path}`")
+    if catalog.enrol_quality_source_path:
+        st.caption(f"Enrol quality source: `{catalog.enrol_quality_source_path}`")
 
-    if state.transcript_length_note:
-        st.warning(state.transcript_length_note)
-    if state.enrol_quality_note:
-        st.warning(state.enrol_quality_note)
+    if catalog.transcript_length_note:
+        st.warning(catalog.transcript_length_note)
+    if catalog.enrol_quality_note:
+        st.warning(catalog.enrol_quality_note)
 
-    if not state.models:
+    if not catalog.models:
         st.error("No model directories were found under `output/BASE` or `output/PRIMARY`.")
         st.stop()
 
@@ -458,34 +423,18 @@ def main() -> None:
         enrol_quality_max=st.session_state["enrol_quality_max"],
         enrol_gt_length_filter=st.session_state["enrol_gt_length_filter"],
     )
-    effective_metric_long_df, effective_availability_df = resolve_effective_dashboard_view(
-        state,
+    effective_metric_long_df, effective_availability_df = get_metric_view_cached(
         filter_config.preset_name,
+        selected_metric,
+        tuple(selected_models),
+        refresh_token,
     )
 
-    subset_label = (
-        f"Custom subset (based on {st.session_state['preset_name']})"
-        if is_custom_subset(st.session_state["preset_name"], filter_config)
-        else st.session_state["preset_name"]
+    summary_items = build_filter_summary_items(
+        filter_config,
+        st.session_state["preset_name"],
+        custom_subset=is_custom_subset(st.session_state["preset_name"], filter_config),
     )
-    summary_items = [
-        f"Subset: {subset_label}",
-        f"Speaker ratio >= {filter_config.speaker_ratio_min}%",
-        f"Transcript length > {filter_config.transcript_length_min}",
-        (
-            f"Enrol TER <= {filter_config.enrol_quality_max:.4f}"
-            if filter_config.enrol_quality_max is not None
-            else "Enrol TER: 不限"
-        ),
-        f"Enrol GT length: {ENROL_GT_LENGTH_LABELS.get(filter_config.enrol_gt_length_filter, filter_config.enrol_gt_length_filter)}",
-        f"Speaker scope: {SPEAKER_SCOPE_LABELS[filter_config.speaker_scope]}",
-        f"Mixture ratio: {format_optional_threshold(filter_config.mixture_ratio_min, '>= ')}%"
-        if filter_config.mixture_ratio_min is not None
-        else "Mixture ratio: 不限",
-        f"Mixture duration: {format_optional_threshold(filter_config.mixture_duration_max, '<= ')}s"
-        if filter_config.mixture_duration_max is not None
-        else "Mixture duration: 不限",
-    ]
     st.info(" | ".join(summary_items))
 
     filtered_rows = filter_metric_rows(
@@ -511,7 +460,7 @@ def main() -> None:
     st.markdown("**Overall**")
     st.dataframe(
         overall_display_df,
-        width="stretch",
+        use_container_width=True,
         hide_index=True,
         column_config=build_table_column_config(overall_display_df, data_column_start=0),
     )
@@ -523,7 +472,7 @@ def main() -> None:
         ds_df = format_group_summary_table(aggregates["dataset_summary_df"])
     st.dataframe(
         ds_df,
-        width="stretch",
+        use_container_width=True,
         hide_index=True,
         column_config=build_table_column_config(ds_df, data_column_start=2),
     )
@@ -535,7 +484,7 @@ def main() -> None:
         lang_df = format_group_summary_table(aggregates["language_summary_df"])
     st.dataframe(
         lang_df,
-        width="stretch",
+        use_container_width=True,
         hide_index=True,
         column_config=build_table_column_config(lang_df, data_column_start=2),
     )
@@ -554,7 +503,7 @@ def main() -> None:
                 lower_is_better=ter_metric,
                 sim_uplift=sim_mode,
             ),
-            width="stretch",
+            use_container_width=True,
         )
 
     group_labels = ["Overall", *DATASET_ORDER, *LANGUAGE_ORDER]
@@ -568,7 +517,7 @@ def main() -> None:
                 st.session_state["bar_group_label"],
                 sim_uplift=is_sim_ui_metric(selected_metric),
             ),
-            width="stretch",
+            use_container_width=True,
         )
 
     with st.expander("Metric File Status", expanded=False):
@@ -600,7 +549,7 @@ def main() -> None:
         )
         st.dataframe(
             status_df,
-            width="stretch",
+            use_container_width=True,
             hide_index=True,
             column_config={
                 "model": st.column_config.TextColumn("model", width="small"),
@@ -631,5 +580,14 @@ def main() -> None:
     st.caption(f"Last refresh: {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
 
+def run_app() -> None:
+    dashboard_page = st.Page(main, title="Dashboard", icon="📊", default=True)
+    samples_page = st.Page(render_samples_page, title="Samples", icon="🎧", url_path="samples")
+    PAGE_REFS["dashboard"] = dashboard_page
+    PAGE_REFS["samples"] = samples_page
+    navigation = st.navigation([dashboard_page, samples_page], position="hidden")
+    navigation.run()
+
+
 if __name__ == "__main__":
-    main()
+    run_app()

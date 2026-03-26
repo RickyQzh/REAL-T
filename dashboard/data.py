@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import re
+import shutil
 import sys
 from dataclasses import dataclass
 from functools import lru_cache
@@ -22,6 +24,8 @@ METADATA_BASE_DIR = REPO_ROOT / "datasets" / "REAL-T" / "BASE"
 METADATA_FULL_DIR = REPO_ROOT / "datasets" / "REAL-T" / "metadata"
 DEFAULT_ENROL_TER_CSV = REPO_ROOT / "dashboard" / "enrol_quality" / "enrol_ter_full.csv"
 ENROL_TER_CSV_ENV_KEY = "REALT_ENROL_TER_FULL_CSV"
+CACHE_DIR = REPO_ROOT / "dashboard" / ".cache"
+CACHE_VERSION = "2026-03-25-lazy-v2-sample-text"
 
 RESULT_ROOT_BASE = "BASE"
 RESULT_ROOT_PRIMARY = "PRIMARY"
@@ -53,6 +57,35 @@ FILTER_KEYS = [
     "enrol_quality_max",
     "enrol_gt_length_filter",
 ]
+
+SAMPLE_AUDIO_COLUMNS = [
+    "mixture_audio_path",
+    "enrol_audio_path",
+    "tse_audio_path",
+]
+
+SAMPLE_TEXT_COLUMNS = [
+    "ground_truth_transcript",
+    "tse_transcript_asr1",
+    "tse_transcript_asr2",
+]
+
+SAMPLE_METRIC_COLUMNS = [
+    "ter_whisper",
+    "ter_fireredasr2",
+    "sim_enrol_mixture",
+    "sim_enrol_tse",
+    "sim_uplift_pct",
+    "dnsmos_sig",
+    "dnsmos_bak",
+    "dnsmos_ovrl",
+    "dnsmos_p808",
+    "ratio_precision",
+    "ratio_recall",
+    "ratio_f1",
+]
+
+SAMPLE_KEY_COLUMNS = ["model", "utterance_key", "result_root"]
 
 PRESET_DEFAULTS: dict[str, dict[str, Any]] = {
     "BASE": {
@@ -198,6 +231,25 @@ class DashboardState:
 
 
 @dataclass(frozen=True)
+class DashboardCatalogState:
+    model_source_df: pd.DataFrame
+    models: list[str]
+    transcript_length_note: str | None
+    enrol_quality_note: str | None
+    enrol_quality_source_path: str | None
+
+
+@dataclass(frozen=True)
+class SamplePageState:
+    sample_detail_df: pd.DataFrame
+    model_source_df: pd.DataFrame
+    models: list[str]
+    transcript_length_note: str | None
+    enrol_quality_note: str | None
+    enrol_quality_source_path: str | None
+
+
+@dataclass(frozen=True)
 class FilterConfig:
     preset_name: str
     selected_speakers: tuple[int, ...]
@@ -268,6 +320,69 @@ def _empty_availability_df() -> pd.DataFrame:
             "message",
         ]
     )
+
+
+def _empty_sample_detail_df() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "model",
+            "dataset",
+            "lang_display",
+            "utterance_key",
+            "mixture_utterance",
+            "enrolment_speakers_utterance",
+            "total_number_of_speaker",
+            "is_primary_speaker",
+            "speaker_ratio",
+            "mixture_ratio",
+            "mixture_duration",
+            "transcript_length",
+            "enrol_ter",
+            "enrol_gt_length",
+            "is_official_primary",
+            "result_root",
+            *SAMPLE_AUDIO_COLUMNS,
+            *SAMPLE_TEXT_COLUMNS,
+            *SAMPLE_METRIC_COLUMNS,
+        ]
+    )
+
+
+def _ensure_cache_dir() -> Path:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return CACHE_DIR
+
+
+def _path_signature(path: Path) -> str:
+    if not path.exists():
+        return f"{path.resolve()}::missing"
+    stat = path.stat()
+    return f"{path.resolve()}::{stat.st_mtime_ns}::{stat.st_size}"
+
+
+def _hash_parts(parts: list[str]) -> str:
+    digest = hashlib.sha1()
+    for part in parts:
+        digest.update(part.encode("utf-8", errors="ignore"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _read_parquet_if_valid(path: Path) -> pd.DataFrame | None:
+    if not path.is_file():
+        return None
+    try:
+        return pd.read_parquet(path)
+    except Exception:
+        return None
+
+
+def _write_parquet_cache(path: Path, df: pd.DataFrame) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(path, index=False)
+    except Exception:
+        pass
 
 
 def _optional_path(value: object) -> Path | None:
@@ -407,6 +522,33 @@ def _resolve_enrol_ter_csv_path() -> Path:
     return DEFAULT_ENROL_TER_CSV.resolve()
 
 
+def _metadata_source_paths() -> list[Path]:
+    paths = [p for p in sorted(METADATA_BASE_DIR.glob("*_meta.csv")) if p.stem != "Fisher_meta"]
+    paths.extend(p for p in sorted(METADATA_FULL_DIR.glob("*_meta.csv")) if p.stem != "Fisher_meta")
+    enrol_path = _resolve_enrol_ter_csv_path()
+    paths.append(enrol_path)
+    return paths
+
+
+def _metadata_cache_key(length_note: str | None, enrol_quality_note: str | None) -> str:
+    parts = [CACHE_VERSION, "base_metadata"]
+    parts.extend(_path_signature(path) for path in _metadata_source_paths())
+    parts.append(f"length_note::{length_note or 'strict'}")
+    parts.append(f"enrol_note::{enrol_quality_note or 'ok'}")
+    return _hash_parts(parts)
+
+
+def _sample_detail_cache_key(
+    model: str,
+    result_root: str,
+    metadata_key: str,
+) -> str:
+    parts = [CACHE_VERSION, "sample_detail", model, result_root, metadata_key]
+    for metric_key in METRIC_SPECS:
+        parts.append(_path_signature(_expected_metric_csv_path(model, metric_key, result_root)))
+    return _hash_parts(parts)
+
+
 @lru_cache(maxsize=1)
 def _load_primary_annotations_from_full() -> pd.DataFrame:
     cols = ["utterance_key", "is_primary_speaker_from_full", "is_official_primary"]
@@ -533,11 +675,17 @@ def _load_enrol_quality_annotations() -> tuple[pd.DataFrame, str | None, Path]:
     return work.reset_index(drop=True), note, path
 
 
-@lru_cache(maxsize=1)
-def load_base_metadata() -> tuple[pd.DataFrame, str | None, str | None, str | None]:
+@lru_cache(maxsize=8)
+def load_base_metadata(refresh_token: int = 0) -> tuple[pd.DataFrame, str | None, str | None, str | None]:
     length_fn, note = _get_transcript_length_normalizer()
     enrol_quality_df, enrol_quality_note, enrol_quality_path = _load_enrol_quality_annotations()
     primary_annotations_df = _load_primary_annotations_from_full()
+    metadata_cache_key = _metadata_cache_key(note, enrol_quality_note)
+    metadata_cache_path = _ensure_cache_dir() / f"base_metadata_{metadata_cache_key}.parquet"
+
+    cached_df = _read_parquet_if_valid(metadata_cache_path)
+    if cached_df is not None:
+        return cached_df, note, enrol_quality_note, str(enrol_quality_path)
 
     frames: list[pd.DataFrame] = []
     for csv_path in sorted(METADATA_BASE_DIR.glob("*_meta.csv")):
@@ -652,6 +800,7 @@ def load_base_metadata() -> tuple[pd.DataFrame, str | None, str | None, str | No
 
     metadata_df = pd.concat(frames, ignore_index=True)
     metadata_df = metadata_df.drop_duplicates(subset=["utterance_key"]).reset_index(drop=True)
+    _write_parquet_cache(metadata_cache_path, metadata_df)
     return metadata_df, note, enrol_quality_note, str(enrol_quality_path)
 
 
@@ -668,12 +817,174 @@ def _base_metadata_lookup(metadata_df: pd.DataFrame) -> pd.DataFrame:
             "speaker_ratio",
             "mixture_ratio",
             "mixture_duration",
+            "ground_truth_transcript",
             "transcript_length",
             "enrol_ter",
             "enrol_gt_length",
             "is_official_primary",
         ]
     ].copy()
+
+
+def _first_non_null(values: pd.Series) -> object:
+    non_null = values.dropna()
+    if non_null.empty:
+        return np.nan
+    return non_null.iloc[0]
+
+
+def _build_sample_partial_rows(metric_key: str, work: pd.DataFrame, model: str, result_root: str) -> pd.DataFrame:
+    if work.empty:
+        return pd.DataFrame(
+            columns=[*SAMPLE_KEY_COLUMNS, *SAMPLE_AUDIO_COLUMNS, *SAMPLE_TEXT_COLUMNS, *SAMPLE_METRIC_COLUMNS]
+        )
+
+    partial = pd.DataFrame(
+        {
+            "model": model,
+            "utterance_key": work["utterance_key"].astype(str),
+            "result_root": result_root,
+        }
+    )
+
+    if metric_key == "ter_whisper":
+        partial["ter_whisper"] = work["metric_value"]
+        if "predicted" in work.columns:
+            partial["tse_transcript_asr1"] = work["predicted"]
+    elif metric_key == "ter_fireredasr2":
+        partial["ter_fireredasr2"] = work["metric_value"]
+        if "predicted" in work.columns:
+            partial["tse_transcript_asr2"] = work["predicted"]
+    elif metric_key == "sim_enrol_mixture":
+        partial["mixture_audio_path"] = work.get("estimation_path")
+        partial["enrol_audio_path"] = work.get("reference_path")
+        partial["sim_enrol_mixture"] = work["metric_value"]
+    elif metric_key == "sim_enrol_tse":
+        partial["tse_audio_path"] = work.get("estimation_path")
+        partial["enrol_audio_path"] = work.get("reference_path")
+        partial["sim_enrol_tse"] = work["metric_value"]
+    elif metric_key == "dnsmos_sig":
+        partial["tse_audio_path"] = work.get("path")
+        partial["dnsmos_sig"] = work["metric_value"]
+    elif metric_key == "dnsmos_bak":
+        partial["tse_audio_path"] = work.get("path")
+        partial["dnsmos_bak"] = work["metric_value"]
+    elif metric_key == "dnsmos_ovrl":
+        partial["tse_audio_path"] = work.get("path")
+        partial["dnsmos_ovrl"] = work["metric_value"]
+    elif metric_key == "dnsmos_p808":
+        partial["tse_audio_path"] = work.get("path")
+        partial["dnsmos_p808"] = work["metric_value"]
+    elif metric_key == "ratio_precision":
+        partial["tse_audio_path"] = work.get("path")
+        partial["ratio_precision"] = work["metric_value"]
+    elif metric_key == "ratio_recall":
+        partial["tse_audio_path"] = work.get("path")
+        partial["ratio_recall"] = work["metric_value"]
+    elif metric_key == "ratio_f1":
+        partial["tse_audio_path"] = work.get("path")
+        partial["ratio_f1"] = work["metric_value"]
+    else:
+        raise ValueError(f"Unsupported metric_key for sample rows: {metric_key}")
+
+    return partial
+
+
+def _finalize_sample_detail_df(
+    sample_partials: list[pd.DataFrame],
+    metadata_lookup: pd.DataFrame,
+) -> pd.DataFrame:
+    if not sample_partials:
+        return _empty_sample_detail_df()
+
+    combined = pd.concat(sample_partials, ignore_index=True, sort=False)
+    if combined.empty:
+        return _empty_sample_detail_df()
+
+    agg_map: dict[str, Any] = {}
+    for column in SAMPLE_AUDIO_COLUMNS:
+        if column in combined.columns:
+            agg_map[column] = _first_non_null
+    for column in SAMPLE_TEXT_COLUMNS:
+        if column in combined.columns:
+            agg_map[column] = _first_non_null
+    for column in SAMPLE_METRIC_COLUMNS:
+        if column in combined.columns:
+            agg_map[column] = "mean"
+
+    collapsed = (
+        combined.groupby(SAMPLE_KEY_COLUMNS, as_index=False)
+        .agg(agg_map)
+        .sort_values(SAMPLE_KEY_COLUMNS)
+        .reset_index(drop=True)
+    )
+
+    sample_detail_df = collapsed.merge(
+        metadata_lookup,
+        on="utterance_key",
+        how="left",
+        validate="many_to_one",
+    )
+    sample_detail_df = sample_detail_df[sample_detail_df["dataset"].isin(DATASET_ORDER)].copy()
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sample_detail_df["sim_uplift_pct"] = np.where(
+            sample_detail_df["sim_enrol_mixture"].notna()
+            & sample_detail_df["sim_enrol_tse"].notna()
+            & (np.abs(sample_detail_df["sim_enrol_mixture"].astype(float)) > 1e-12),
+            (
+                sample_detail_df["sim_enrol_tse"].astype(float)
+                - sample_detail_df["sim_enrol_mixture"].astype(float)
+            )
+            / sample_detail_df["sim_enrol_mixture"].astype(float)
+            * 100.0,
+            np.nan,
+        )
+
+    ordered_columns = list(_empty_sample_detail_df().columns)
+    for column in ordered_columns:
+        if column not in sample_detail_df.columns:
+            sample_detail_df[column] = np.nan
+    return sample_detail_df[ordered_columns].copy()
+
+
+def _apply_common_filters(work: pd.DataFrame, filter_config: FilterConfig) -> pd.DataFrame:
+    if work.empty:
+        return work
+
+    if filter_config.preset_name == "PRIMARY":
+        work = work[work["is_official_primary"]].copy()
+    work = work[work["total_number_of_speaker"].isin(filter_config.selected_speakers)].copy()
+    if filter_config.speaker_scope == "primary":
+        work = work[work["is_primary_speaker"]].copy()
+    work = work[work["speaker_ratio"] >= filter_config.speaker_ratio_min / 100.0].copy()
+    work = work[work["transcript_length"] > filter_config.transcript_length_min].copy()
+    if filter_config.enrol_quality_max is not None:
+        work = work[
+            work["enrol_ter"].notna() & (work["enrol_ter"] <= float(filter_config.enrol_quality_max))
+        ].copy()
+
+    length_mode = str(filter_config.enrol_gt_length_filter)
+    if length_mode != "all":
+        lengths = pd.to_numeric(work["enrol_gt_length"], errors="coerce")
+        if length_mode == "0-5":
+            work = work[lengths.between(0, 5, inclusive="both")].copy()
+        elif length_mode == "ge5":
+            work = work[lengths >= 5].copy()
+        elif length_mode == "ge10":
+            work = work[lengths >= 10].copy()
+        elif length_mode == "ge15":
+            work = work[lengths >= 15].copy()
+        elif length_mode == "ge20":
+            work = work[lengths >= 20].copy()
+        else:
+            raise ValueError(f"Unsupported enrol_gt_length_filter: {length_mode}")
+
+    if filter_config.mixture_ratio_min is not None:
+        work = work[work["mixture_ratio"] >= filter_config.mixture_ratio_min / 100.0].copy()
+    if filter_config.mixture_duration_max is not None:
+        work = work[work["mixture_duration"] <= filter_config.mixture_duration_max].copy()
+    return work
 
 
 def _status_record(
@@ -706,7 +1017,7 @@ def _load_metric_file(
     metric_key: str,
     metadata_lookup: pd.DataFrame,
     result_root: str,
-) -> tuple[pd.DataFrame, dict[str, Any]]:
+) -> tuple[pd.DataFrame, dict[str, Any], pd.DataFrame]:
     spec = METRIC_SPECS[metric_key]
     csv_path = model_dir / f"{model}{spec['file_suffix']}"
     if not csv_path.is_file():
@@ -716,7 +1027,7 @@ def _load_metric_file(
             csv_path,
             result_root,
             "missing",
-        )
+        ), pd.DataFrame()
 
     try:
         df = pd.read_csv(csv_path)
@@ -728,7 +1039,7 @@ def _load_metric_file(
             result_root,
             "error",
             message=str(exc),
-        )
+        ), pd.DataFrame()
 
     if df.empty:
         return pd.DataFrame(), _status_record(
@@ -737,7 +1048,7 @@ def _load_metric_file(
             csv_path,
             result_root,
             "empty",
-        )
+        ), pd.DataFrame()
 
     if spec["source_type"] == "ter":
         required = {"mixture_utterance", "enrolment_speakers_utterance", spec["value_column"]}
@@ -750,7 +1061,7 @@ def _load_metric_file(
                 "error",
                 row_count=len(df),
                 message=f"Missing columns: {sorted(required.difference(df.columns))}",
-            )
+            ), pd.DataFrame()
         work = df.copy()
         work["utterance_key"] = work.apply(
             lambda row: make_utterance_key(
@@ -769,7 +1080,7 @@ def _load_metric_file(
                 "error",
                 row_count=len(df),
                 message=f"Missing columns: {sorted(required.difference(df.columns))}",
-            )
+            ), pd.DataFrame()
         work = df.copy()
         if "status" in work.columns and spec["source_type"] in {"utterance"}:
             work = work[work["status"] == "ok"].copy()
@@ -777,6 +1088,7 @@ def _load_metric_file(
 
     work["metric_value"] = pd.to_numeric(work[spec["value_column"]], errors="coerce")
     work = work.dropna(subset=["metric_value"]).copy()
+    sample_partial_rows = _build_sample_partial_rows(metric_key, work, model, result_root)
     # Metric CSVs often duplicate BASE metadata columns; merging full `work` would suffix
     # them (_x/_y) and break the column list below. Keep only keys + metric for the join.
     merge_left = work[["utterance_key", "metric_value"]].copy()
@@ -824,13 +1136,13 @@ def _load_metric_file(
         status,
         row_count=len(df),
         matched_row_count=len(metric_rows),
-    )
+    ), sample_partial_rows
 
 
 @lru_cache(maxsize=8)
 def load_dashboard_state(refresh_token: int = 0) -> DashboardState:
     metadata_df, transcript_length_note, enrol_quality_note, enrol_quality_source_path = (
-        load_base_metadata()
+        load_base_metadata(refresh_token)
     )
     metadata_lookup = _base_metadata_lookup(metadata_df)
     model_source_df = _build_model_source_df()
@@ -847,7 +1159,7 @@ def load_dashboard_state(refresh_token: int = 0) -> DashboardState:
             if model_dir is None:
                 continue
             for metric_key in METRIC_SPECS:
-                metric_rows, availability = _load_metric_file(
+                metric_rows, availability, _sample_partial_rows = _load_metric_file(
                     model=model,
                     model_dir=model_dir,
                     metric_key=metric_key,
@@ -875,6 +1187,220 @@ def load_dashboard_state(refresh_token: int = 0) -> DashboardState:
         enrol_quality_note=enrol_quality_note,
         enrol_quality_source_path=enrol_quality_source_path,
     )
+
+
+@lru_cache(maxsize=8)
+def load_sample_page_state(refresh_token: int = 0) -> SamplePageState:
+    metadata_df, transcript_length_note, enrol_quality_note, enrol_quality_source_path = (
+        load_base_metadata(refresh_token)
+    )
+    metadata_lookup = _base_metadata_lookup(metadata_df)
+    model_source_df = _build_model_source_df()
+
+    sample_partial_frames: list[pd.DataFrame] = []
+    for row in model_source_df.to_dict(orient="records"):
+        model = str(row["model"])
+        for result_root, dir_key in (
+            (RESULT_ROOT_BASE, "base_dir"),
+            (RESULT_ROOT_PRIMARY, "primary_dir"),
+        ):
+            model_dir = _optional_path(row.get(dir_key))
+            if model_dir is None:
+                continue
+            for metric_key in METRIC_SPECS:
+                _metric_rows, _availability, sample_partial_rows = _load_metric_file(
+                    model=model,
+                    model_dir=model_dir,
+                    metric_key=metric_key,
+                    metadata_lookup=metadata_lookup,
+                    result_root=result_root,
+                )
+                if not sample_partial_rows.empty:
+                    sample_partial_frames.append(sample_partial_rows)
+
+    sample_detail_df = _finalize_sample_detail_df(sample_partial_frames, metadata_lookup)
+    models = model_source_df["model"].astype(str).tolist() if not model_source_df.empty else []
+    return SamplePageState(
+        sample_detail_df=sample_detail_df,
+        model_source_df=model_source_df,
+        models=models,
+        transcript_length_note=transcript_length_note,
+        enrol_quality_note=enrol_quality_note,
+        enrol_quality_source_path=enrol_quality_source_path,
+    )
+
+
+@lru_cache(maxsize=8)
+def load_dashboard_catalog(refresh_token: int = 0) -> DashboardCatalogState:
+    _metadata_df, transcript_length_note, enrol_quality_note, enrol_quality_source_path = load_base_metadata(
+        refresh_token
+    )
+    model_source_df = _build_model_source_df()
+    models = model_source_df["model"].astype(str).tolist() if not model_source_df.empty else []
+    return DashboardCatalogState(
+        model_source_df=model_source_df,
+        models=models,
+        transcript_length_note=transcript_length_note,
+        enrol_quality_note=enrol_quality_note,
+        enrol_quality_source_path=enrol_quality_source_path,
+    )
+
+
+def _selected_metric_keys(metric_key: str) -> tuple[str, ...]:
+    if is_sim_ui_metric(metric_key):
+        return tuple(sorted(SIM_METRIC_KEYS))
+    return (metric_key,)
+
+
+@lru_cache(maxsize=128)
+def load_effective_metric_view(
+    preset_name: str,
+    metric_key: str,
+    selected_models: tuple[str, ...],
+    refresh_token: int = 0,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if not selected_models:
+        return _empty_metric_long_df(), _empty_availability_df()
+
+    metadata_df, _transcript_length_note, _enrol_quality_note, _enrol_quality_source_path = (
+        load_base_metadata(refresh_token)
+    )
+    metadata_lookup = _base_metadata_lookup(metadata_df)
+    catalog = load_dashboard_catalog(refresh_token)
+    model_rows = {
+        str(row["model"]): row for row in catalog.model_source_df.to_dict(orient="records")
+    }
+    requested_metric_keys = _selected_metric_keys(metric_key)
+
+    metric_frames: list[pd.DataFrame] = []
+    availability_records: list[dict[str, Any]] = []
+    for model in selected_models:
+        row = model_rows.get(model)
+        if row is None:
+            missing_root = RESULT_ROOT_BASE if preset_name == RESULT_ROOT_BASE else RESULT_ROOT_PRIMARY
+            for mk in requested_metric_keys:
+                availability_records.append(
+                    _status_record(
+                        model=model,
+                        metric_key=mk,
+                        csv_path=_expected_metric_csv_path(model, mk, missing_root),
+                        result_root=missing_root,
+                        status="missing",
+                    )
+                )
+            continue
+
+        effective_root = _resolve_effective_result_root_for_model(
+            preset_name,
+            row.get("base_dir"),
+            row.get("primary_dir"),
+        )
+        if effective_root is None:
+            missing_root = RESULT_ROOT_BASE if preset_name == RESULT_ROOT_BASE else RESULT_ROOT_PRIMARY
+            for mk in requested_metric_keys:
+                availability_records.append(
+                    _status_record(
+                        model=model,
+                        metric_key=mk,
+                        csv_path=_expected_metric_csv_path(model, mk, missing_root),
+                        result_root=missing_root,
+                        status="missing",
+                    )
+                )
+            continue
+
+        model_dir = _optional_path(
+            row.get("base_dir") if effective_root == RESULT_ROOT_BASE else row.get("primary_dir")
+        )
+        if model_dir is None:
+            for mk in requested_metric_keys:
+                availability_records.append(
+                    _status_record(
+                        model=model,
+                        metric_key=mk,
+                        csv_path=_expected_metric_csv_path(model, mk, effective_root),
+                        result_root=effective_root,
+                        status="missing",
+                    )
+                )
+            continue
+
+        for mk in requested_metric_keys:
+            metric_rows, availability, _sample_partial_rows = _load_metric_file(
+                model=model,
+                model_dir=model_dir,
+                metric_key=mk,
+                metadata_lookup=metadata_lookup,
+                result_root=effective_root,
+            )
+            availability_records.append(availability)
+            if not metric_rows.empty:
+                metric_frames.append(metric_rows)
+
+    metric_long_df = pd.concat(metric_frames, ignore_index=True) if metric_frames else _empty_metric_long_df()
+    availability_df = (
+        pd.DataFrame(availability_records) if availability_records else _empty_availability_df()
+    )
+    return metric_long_df, availability_df
+
+
+@lru_cache(maxsize=128)
+def load_effective_sample_detail_for_model(
+    model: str,
+    preset_name: str,
+    refresh_token: int = 0,
+) -> pd.DataFrame:
+    if not model:
+        return _empty_sample_detail_df()
+
+    metadata_df, transcript_length_note, enrol_quality_note, _enrol_quality_source_path = load_base_metadata(
+        refresh_token
+    )
+    metadata_lookup = _base_metadata_lookup(metadata_df)
+    catalog = load_dashboard_catalog(refresh_token)
+    model_rows = {
+        str(row["model"]): row for row in catalog.model_source_df.to_dict(orient="records")
+    }
+    row = model_rows.get(model)
+    if row is None:
+        return _empty_sample_detail_df()
+
+    effective_root = _resolve_effective_result_root_for_model(
+        preset_name,
+        row.get("base_dir"),
+        row.get("primary_dir"),
+    )
+    if effective_root is None:
+        return _empty_sample_detail_df()
+
+    model_dir = _optional_path(
+        row.get("base_dir") if effective_root == RESULT_ROOT_BASE else row.get("primary_dir")
+    )
+    if model_dir is None:
+        return _empty_sample_detail_df()
+
+    metadata_key = _metadata_cache_key(transcript_length_note, enrol_quality_note)
+    sample_cache_key = _sample_detail_cache_key(model, effective_root, metadata_key)
+    sample_cache_path = _ensure_cache_dir() / "samples" / f"{sample_cache_key}.parquet"
+    cached_df = _read_parquet_if_valid(sample_cache_path)
+    if cached_df is not None:
+        return cached_df
+
+    sample_partial_frames: list[pd.DataFrame] = []
+    for metric_key in METRIC_SPECS:
+        _metric_rows, _availability, sample_partial_rows = _load_metric_file(
+            model=model,
+            model_dir=model_dir,
+            metric_key=metric_key,
+            metadata_lookup=metadata_lookup,
+            result_root=effective_root,
+        )
+        if not sample_partial_rows.empty:
+            sample_partial_frames.append(sample_partial_rows)
+
+    sample_detail_df = _finalize_sample_detail_df(sample_partial_frames, metadata_lookup)
+    _write_parquet_cache(sample_cache_path, sample_detail_df)
+    return sample_detail_df
 
 
 def resolve_effective_dashboard_view(
@@ -940,6 +1466,37 @@ def resolve_effective_dashboard_view(
     return effective_metric_long_df, effective_availability_df
 
 
+def resolve_effective_sample_view(
+    state: SamplePageState,
+    preset_name: str,
+) -> pd.DataFrame:
+    effective_root_lookup = _resolve_effective_result_root_lookup(
+        state.model_source_df,
+        preset_name,
+    )
+    if state.sample_detail_df.empty:
+        return _empty_sample_detail_df()
+
+    work = state.sample_detail_df.copy()
+    work["effective_result_root"] = work["model"].map(effective_root_lookup)
+    return work[
+        work["effective_result_root"].notna()
+        & work["result_root"].eq(work["effective_result_root"])
+    ].drop(columns=["effective_result_root"])
+
+
+def clear_dashboard_caches() -> None:
+    _load_primary_annotations_from_full.cache_clear()
+    _load_enrol_quality_annotations.cache_clear()
+    load_base_metadata.cache_clear()
+    load_dashboard_state.cache_clear()
+    load_sample_page_state.cache_clear()
+    load_dashboard_catalog.cache_clear()
+    load_effective_metric_view.cache_clear()
+    load_effective_sample_detail_for_model.cache_clear()
+    shutil.rmtree(CACHE_DIR, ignore_errors=True)
+
+
 def build_filter_config(
     preset_name: str,
     selected_speakers: list[int],
@@ -1002,40 +1559,21 @@ def filter_metric_rows(
     if work.empty:
         return work
 
-    if filter_config.preset_name == "PRIMARY":
-        work = work[work["is_official_primary"]].copy()
-    work = work[work["total_number_of_speaker"].isin(filter_config.selected_speakers)].copy()
-    if filter_config.speaker_scope == "primary":
-        work = work[work["is_primary_speaker"]].copy()
-    work = work[work["speaker_ratio"] >= filter_config.speaker_ratio_min / 100.0].copy()
-    work = work[work["transcript_length"] > filter_config.transcript_length_min].copy()
-    if filter_config.enrol_quality_max is not None:
-        work = work[
-            work["enrol_ter"].notna() & (work["enrol_ter"] <= float(filter_config.enrol_quality_max))
-        ].copy()
+    return _apply_common_filters(work, filter_config)
 
-    length_mode = str(filter_config.enrol_gt_length_filter)
-    if length_mode != "all":
-        lengths = pd.to_numeric(work["enrol_gt_length"], errors="coerce")
-        if length_mode == "0-5":
-            work = work[lengths.between(0, 5, inclusive="both")].copy()
-        elif length_mode == "ge5":
-            work = work[lengths >= 5].copy()
-        elif length_mode == "ge10":
-            work = work[lengths >= 10].copy()
-        elif length_mode == "ge15":
-            work = work[lengths >= 15].copy()
-        elif length_mode == "ge20":
-            work = work[lengths >= 20].copy()
-        else:
-            raise ValueError(f"Unsupported enrol_gt_length_filter: {length_mode}")
 
-    if filter_config.mixture_ratio_min is not None:
-        work = work[work["mixture_ratio"] >= filter_config.mixture_ratio_min / 100.0].copy()
-    if filter_config.mixture_duration_max is not None:
-        work = work[work["mixture_duration"] <= filter_config.mixture_duration_max].copy()
+def filter_sample_rows(
+    sample_detail_df: pd.DataFrame,
+    selected_model: str,
+    filter_config: FilterConfig,
+) -> pd.DataFrame:
+    if sample_detail_df.empty or not selected_model:
+        return _empty_sample_detail_df()
 
-    return work
+    work = sample_detail_df[sample_detail_df["model"].eq(selected_model)].copy()
+    if work.empty:
+        return _empty_sample_detail_df()
+    return _apply_common_filters(work, filter_config)
 
 
 def _sim_combined_status(model: str, availability_df: pd.DataFrame) -> str:
