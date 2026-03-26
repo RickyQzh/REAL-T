@@ -207,14 +207,12 @@ def summarize_one_base_dir(base_dir: Path, output_txt_name: str | None) -> Path:
     output_txt = base_dir / (output_txt_name or f"{base_name}_summary.txt")
 
     ter_path = require_file(base_dir / f"{base_name}_TER.csv")
-    ter2_path = require_file(base_dir / f"{base_name}_TER_ASR2_AED.csv")
     sim_path = require_file(base_dir / f"{base_name}_spk_similarity.csv")
     sim_baseline_path = require_file(base_dir / f"{base_name}_spk_similarity_mixture_enrol.csv")
     dnsmos_path = require_file(base_dir / f"{base_name}_dnsmos.csv")
     timing_path = require_file(base_dir / f"{base_name}_TSE_TIMING.csv")
 
     ter_df = pd.read_csv(ter_path)
-    ter2_df = pd.read_csv(ter2_path)
     sim_df = pd.read_csv(sim_path)
     sim_baseline_df = pd.read_csv(sim_baseline_path)
     dnsmos_df = pd.read_csv(dnsmos_path)
@@ -225,10 +223,6 @@ def summarize_one_base_dir(base_dir: Path, output_txt_name: str | None) -> Path:
     ter_work = ter_df.copy()
     ter_work["language"] = ter_work["language"].map(normalize_language)
     ter_work = ter_work.rename(columns={"source": "dataset"})
-
-    ter2_work = ter2_df.copy()
-    ter2_work["language"] = ter2_work["language"].map(normalize_language)
-    ter2_work = ter2_work.rename(columns={"source": "dataset"})
 
     sim_work = sim_df[sim_df["status"] == "ok"].copy()
     sim_work["language"] = sim_work["language"].map(normalize_language)
@@ -253,13 +247,6 @@ def summarize_one_base_dir(base_dir: Path, output_txt_name: str | None) -> Path:
     )
     ter_lang = mean_by_group(ter_work, "language", ["wer_or_cer"]).rename(
         columns={"language": "lang", "wer_or_cer": "ter_whisper"}
-    )
-
-    ter2_dataset = mean_by_group(ter2_work, "dataset", ["wer_or_cer"]).rename(
-        columns={"wer_or_cer": "ter_fireredasr2"}
-    )
-    ter2_lang = mean_by_group(ter2_work, "language", ["wer_or_cer"]).rename(
-        columns={"language": "lang", "wer_or_cer": "ter_fireredasr2"}
     )
 
     sim_dataset = mean_by_group(sim_work, "dataset", ["speaker_cosine_similarity"]).rename(
@@ -303,7 +290,6 @@ def summarize_one_base_dir(base_dir: Path, output_txt_name: str | None) -> Path:
 
     dataset_values = merge_metric_maps(
         to_metric_map(ter_dataset, "dataset", {"ter_whisper": "ter_whisper"}),
-        to_metric_map(ter2_dataset, "dataset", {"ter_fireredasr2": "ter_fireredasr2"}),
         to_metric_map(sim_baseline_dataset, "dataset", {"sim_enrol_mixture": "sim_enrol_mixture"}),
         to_metric_map(sim_dataset, "dataset", {"sim_enrol_tse": "sim_enrol_tse"}),
         to_metric_map(
@@ -329,7 +315,6 @@ def summarize_one_base_dir(base_dir: Path, output_txt_name: str | None) -> Path:
 
     lang_values = merge_metric_maps(
         to_metric_map(ter_lang, "lang", {"ter_whisper": "ter_whisper"}),
-        to_metric_map(ter2_lang, "lang", {"ter_fireredasr2": "ter_fireredasr2"}),
         to_metric_map(sim_baseline_lang, "lang", {"sim_enrol_mixture": "sim_enrol_mixture"}),
         to_metric_map(sim_lang, "lang", {"sim_enrol_tse": "sim_enrol_tse"}),
         to_metric_map(
@@ -358,7 +343,6 @@ def summarize_one_base_dir(base_dir: Path, output_txt_name: str | None) -> Path:
 
     grouped_columns = [
         ("TER", "fireredasr-1/whisper", "ter_whisper"),
-        ("TER", "fireredasr-2", "ter_fireredasr2"),
         ("SIM", "enrol-mixture", "sim_enrol_mixture"),
         ("SIM", "enrol-tse", "sim_enrol_tse"),
         ("DNSMOS", "SIG", "dnsmos_sig"),
@@ -387,7 +371,6 @@ def summarize_one_base_dir(base_dir: Path, output_txt_name: str | None) -> Path:
             ["metric", "file"],
             [
                 ["TER", str(ter_path)],
-                ["TER_ASR2_AED", str(ter2_path)],
                 ["SIM enrol-mixture", str(sim_baseline_path)],
                 ["SIM enrol-tse", str(sim_path)],
                 ["DNSMOS", str(dnsmos_path)],

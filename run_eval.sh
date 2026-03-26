@@ -116,7 +116,6 @@ run_pipeline() {
     echo "  fisher   : $INCLUDING_FISHER"
 
     run_stage "TER" bash "${REAL_T_ROOT}/eval/transcribe_and_evaluation.sh" 1 2
-    run_stage "TER_ASR2_AED" bash "${REAL_T_ROOT}/eval/transcribe_and_evaluation_asr2.sh" 1 2
     run_stage "TSE_TIMING" bash "${REAL_T_ROOT}/eval/vad_and_evaluation.sh" 1 2
     run_stage "SPK_SIM_TSE_ENROL" bash "${REAL_T_ROOT}/eval/compute_spk_similarity.sh" 1 2
     run_stage "SPK_SIM_MIXTURE_ENROL" env SPK_SIM_PAIR_MODE=mixture_enrol bash "${REAL_T_ROOT}/eval/compute_spk_similarity.sh" 1 2

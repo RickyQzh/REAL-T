@@ -148,11 +148,10 @@ If no mode is provided, the default is `1 2`.
 By default, `run_eval.sh` runs:
 
 1. `TER`
-2. `TER_ASR2_AED`
-3. `TSE timing`
-4. `speaker similarity (tse_enrol)`
-5. `speaker similarity (mixture_enrol)`
-6. `DNSMOS`
+2. `TSE timing`
+3. `speaker similarity (tse_enrol)`
+4. `speaker similarity (mixture_enrol)`
+5. `DNSMOS`
 
 Optional Fisher support:
 
@@ -163,7 +162,6 @@ bash ./run_eval.sh --base-dir ./output/PRIMARY/BSRNN --test-set PRIMARY --cuda 0
 Expected summary outputs under the chosen `BASE_DIR`:
 
 - `{BASE_NAME}_TER.csv` and `{BASE_NAME}_TER.txt`
-- `{BASE_NAME}_TER_ASR2_AED.csv` and `{BASE_NAME}_TER_ASR2_AED.txt`
 - `{BASE_NAME}_TSE_TIMING.csv` and `{BASE_NAME}_TSE_TIMING.txt`
 - `{BASE_NAME}_spk_similarity.csv` and `{BASE_NAME}_spk_similarity_summary.txt`
 - `{BASE_NAME}_spk_similarity_mixture_enrol.csv` and `{BASE_NAME}_spk_similarity_mixture_enrol_summary.txt`
@@ -177,7 +175,7 @@ Expected summary outputs under the chosen `BASE_DIR`:
 
 with grouped columns:
 
-- `TER`: `fireredasr-1/whisper`, `fireredasr-2`
+- `TER`: `fireredasr-1/whisper`
 - `SIM`: `enrol-mixture`, `enrol-tse`
 - `DNSMOS`: `SIG`, `BAK`, `OVRL`, `P808`
 - `RATIO`: `precision`, `recall`, `f1`

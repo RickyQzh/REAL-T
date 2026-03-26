@@ -31,11 +31,10 @@ bash ./run_eval.sh --base-dir ./output/PRIMARY/BSRNN --test-set PRIMARY --cuda 0
 This sequentially runs:
 
 1. `TER` via `eval/transcribe_and_evaluation.sh`
-2. `TER_ASR2_AED` via `eval/transcribe_and_evaluation_asr2.sh`
-3. `TSE timing` via `eval/vad_and_evaluation.sh`
-4. `speaker similarity (tse_enrol)` via `eval/compute_spk_similarity.sh`
-5. `speaker similarity (mixture_enrol)` via `eval/compute_spk_similarity.sh`
-6. `DNSMOS` via `eval/compute_dnsmos.sh`
+2. `TSE timing` via `eval/vad_and_evaluation.sh`
+3. `speaker similarity (tse_enrol)` via `eval/compute_spk_similarity.sh`
+4. `speaker similarity (mixture_enrol)` via `eval/compute_spk_similarity.sh`
+5. `DNSMOS` via `eval/compute_dnsmos.sh`
 
 Use `--include-fisher` if the target output directory also contains `Fisher`.
 
@@ -52,7 +51,6 @@ Use `--include-fisher` if the target output directory also contains `Fisher`.
 Expected summary outputs under each `BASE_DIR`:
 
 - `{BASE_NAME}_TER.csv` and `{BASE_NAME}_TER.txt`
-- `{BASE_NAME}_TER_ASR2_AED.csv` and `{BASE_NAME}_TER_ASR2_AED.txt`
 - `{BASE_NAME}_TSE_TIMING.csv` and `{BASE_NAME}_TSE_TIMING.txt`
 - `{BASE_NAME}_spk_similarity.csv` and `{BASE_NAME}_spk_similarity_summary.txt`
 - `{BASE_NAME}_spk_similarity_mixture_enrol.csv` and `{BASE_NAME}_spk_similarity_mixture_enrol_summary.txt`
@@ -68,7 +66,6 @@ Its columns are organized as grouped headers:
 
 - `TER`
   - `fireredasr-1/whisper`
-  - `fireredasr-2`
 - `SIM`
   - `enrol-mixture`
   - `enrol-tse`
@@ -85,7 +82,6 @@ Its columns are organized as grouped headers:
 Current metric sources for the aggregated summary:
 
 - `TER / fireredasr-1/whisper`: mean `wer_or_cer` from `{BASE_NAME}_TER.csv`
-- `TER / fireredasr-2`: mean `wer_or_cer` from `{BASE_NAME}_TER_ASR2_AED.csv`
 - `SIM / enrol-mixture`: mean `speaker_cosine_similarity` from `{BASE_NAME}_spk_similarity_mixture_enrol.csv`
 - `SIM / enrol-tse`: mean `speaker_cosine_similarity` from `{BASE_NAME}_spk_similarity.csv`
 - `DNSMOS / *`: mean `SIG / BAK / OVRL / P808` from `{BASE_NAME}_dnsmos.csv`
@@ -123,33 +119,6 @@ mkdir -p ./datasets/REAL-T/json
 cp -r /path/to/REAL-T-Ext-channel-re-seclection/output/REAL-T-datasets/json/* ./datasets/REAL-T/json/
 ```
 
-### FireRedASR2-AED for TER_ASR2_AED
-
-`eval/transcribe_and_evaluation_asr2.sh` expects local weights in:
-
-```bash
-./FireRedASR2S/pretrained_models/FireRedASR2-AED
-```
-
-Download with either ModelScope or Hugging Face:
-
-```bash
-pip install -U modelscope
-modelscope download --model xukaituo/FireRedASR2-AED --local_dir ./FireRedASR2S/pretrained_models/FireRedASR2-AED
-```
-
-```bash
-pip install -U "huggingface_hub[cli]"
-huggingface-cli download FireRedTeam/FireRedASR2-AED --local-dir ./FireRedASR2S/pretrained_models/FireRedASR2-AED
-```
-
-The directory must contain:
-
-- `model.pth.tar`
-- `cmvn.ark`
-- `dict.txt`
-- `train_bpe1000.model`
-
 ### DNSMOS
 
 `eval/compute_dnsmos.sh` uses `./DNSMOS` by default. If the ONNX files are missing, mode 1 auto-downloads them unless `DNSMOS_NO_DOWNLOAD=1`.
@@ -181,33 +150,6 @@ Important env vars:
 - `ENGLISH_DATASETS`
 - `ASR_DEVICE`
 - `MAPPING_CSV_NAME`
-
-### ASR2 TER
-
-`eval/transcribe_and_evaluation_asr2.sh` uses vendored `FireRedASR2-AED` for all datasets.
-
-```bash
-# Only ASR2 transcription
-bash -i ./eval/transcribe_and_evaluation_asr2.sh 1
-
-# Only evaluation
-bash -i ./eval/transcribe_and_evaluation_asr2.sh 2
-
-# Both
-bash -i ./eval/transcribe_and_evaluation_asr2.sh 1 2
-```
-
-Important env vars:
-
-- `BASE_DIRS`
-- `TEST_SET_DIR`
-- `DATASETS`
-- `MAPPING_CSV_NAME`
-- `FIREREDASR2S_ROOT`
-- `FIREREDASR2_MODEL_DIR`
-- `USE_GPU`
-- `USE_HALF`
-- `ASR_BATCH_SIZE`
 
 ### Timing / VAD Eval
 
@@ -304,7 +246,6 @@ You usually do not need to call it directly, because `run_eval.sh ... 2` already
 The script expects the following CSV files to exist under `BASE_DIR`:
 
 - `{BASE_NAME}_TER.csv`
-- `{BASE_NAME}_TER_ASR2_AED.csv`
 - `{BASE_NAME}_spk_similarity.csv`
 - `{BASE_NAME}_spk_similarity_mixture_enrol.csv`
 - `{BASE_NAME}_dnsmos.csv`
