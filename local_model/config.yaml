@@ -13,7 +13,7 @@ model_args:
     spk_emb_dim: 256
     spk_fuse_type: cross_multiply
     spk_model_freeze: true
-    spk_model_init: wespeaker-voxceleb-ecapa-tdnn512.pt
+    spk_model_init: false
     spk_args:
       embed_dim: 192
       feat_dim: 80

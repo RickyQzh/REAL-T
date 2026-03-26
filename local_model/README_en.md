@@ -33,14 +33,26 @@ model_args:
     win: 512               # Window size
     stride: 128            # Stride
     feature_dim: 128       # Feature dimension
-    joint_training: true   # Must be true
     # Other model-specific parameters...
 
 dataset_args:
   resample_rate: 16000    # Output sample rate
 ```
 
-**Note:** You must set `model_args.tse_model.joint_training: true`, otherwise inference will fail.
+
+## Parameter Passing Note
+
+When initializing models, the framework wraps parameters in a nested dictionary structure. If you want to pass parameters using dictionary-style arguments similar to the config.yaml format (e.g., `configs["model_args"]["tse_model"]`), the framework already supports this. However, if your model expects direct keyword argument unpacking and encounters issues, you may need to modify the model initialization code in `wesep/wesep/cli/extractor`:
+
+**Current (dict-style, wrapped in dict):**
+```python
+self.model = get_model(configs["model"]["tse_model"])(configs["model_args"]["tse_model"])
+```
+
+**Change to (unpacked kwargs):**
+```python
+self.model = get_model(configs["model"]["tse_model"])(**configs["model_args"]["tse_model"])
+```
 
 ## Adaptation Steps
 
@@ -93,13 +105,9 @@ new_ckpt = {'models': [model_state]}
 torch.save(new_ckpt, 'avg_model.pt')
 ```
 
-### 3. Configure Parameters
 
-Add the corresponding configuration items in `config.yaml` based on your model's `__init__` parameters.
 
-**Note:** You must set `model_args.tse_model.joint_training: true`, otherwise inference will fail.
-
-### 4. Other Dependencies
+### 3. Other Dependencies
 
 If your model uses additional pre-trained models (e.g., speaker model), ensure these files are also in the `local_model` directory and correctly referenced in the configuration.
 

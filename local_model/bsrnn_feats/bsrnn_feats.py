@@ -304,7 +304,9 @@ class BSRNN_Feats_Local(nn.Module):
                 self.speaker_net.eval()
                 for param in self.speaker_net.parameters():
                     param.requires_grad = False
+                    
             if not spk_feat:
+                # import pdb;pdb.set_trace()
                 if feat_type == "consistent":
                     self.preEmphasis = PreEmphasis()
                     self.spk_encoder = torchaudio.transforms.MelSpectrogram(
@@ -694,9 +696,9 @@ class BSRNN_Feats_Local(nn.Module):
         )
 
         output = output.view(batch_size, nch, -1)
-        s = torch.squeeze(output, dim=1)
+        # s = torch.squeeze(output, dim=1)
         # return s, predict_speaker_lable
-        return s
+        return output
 
 '''
  单通道模型，为了适配外面的dataloader，在model内部将取双通道的通道一为单通道
