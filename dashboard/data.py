@@ -25,7 +25,7 @@ METADATA_FULL_DIR = REPO_ROOT / "datasets" / "REAL-T" / "metadata"
 DEFAULT_ENROL_TER_CSV = REPO_ROOT / "dashboard" / "enrol_quality" / "enrol_ter_full.csv"
 ENROL_TER_CSV_ENV_KEY = "REALT_ENROL_TER_FULL_CSV"
 CACHE_DIR = REPO_ROOT / "dashboard" / ".cache"
-CACHE_VERSION = "2026-03-25-lazy-v2-sample-text"
+CACHE_VERSION = "2026-03-27-metric-path-scan-v3"
 
 RESULT_ROOT_BASE = "BASE"
 RESULT_ROOT_PRIMARY = "PRIMARY"
@@ -185,6 +185,8 @@ STATUS_LABELS = {
     "missing": "MISSING",
     "error": "ERROR",
 }
+
+METRIC_DIR_CANDIDATES = ("", "eval_metrics")
 
 
 def is_sim_ui_metric(metric_key: str) -> bool:
@@ -466,9 +468,36 @@ def _resolve_effective_result_root_lookup(
     return lookup
 
 
+def _metric_csv_filename(model: str, metric_key: str) -> str:
+    return f"{model}{METRIC_SPECS[metric_key]['file_suffix']}"
+
+
+def _expected_metric_csv_paths(model: str, metric_key: str, result_root: str) -> list[Path]:
+    model_dir = _result_root_dir(result_root) / model
+    filename = _metric_csv_filename(model, metric_key)
+    paths: list[Path] = []
+    for rel_dir in METRIC_DIR_CANDIDATES:
+        if rel_dir:
+            paths.append(model_dir / rel_dir / filename)
+        else:
+            paths.append(model_dir / filename)
+    return paths
+
+
 def _expected_metric_csv_path(model: str, metric_key: str, result_root: str) -> Path:
-    spec = METRIC_SPECS[metric_key]
-    return _result_root_dir(result_root) / model / f"{model}{spec['file_suffix']}"
+    # Keep a single-path helper for callers that need a representative path.
+    return _expected_metric_csv_paths(model, metric_key, result_root)[0]
+
+
+def _metric_csv_search_paths_for_model_dir(model: str, metric_key: str, model_dir: Path) -> list[Path]:
+    filename = _metric_csv_filename(model, metric_key)
+    paths: list[Path] = []
+    for rel_dir in METRIC_DIR_CANDIDATES:
+        if rel_dir:
+            paths.append(model_dir / rel_dir / filename)
+        else:
+            paths.append(model_dir / filename)
+    return paths
 
 
 def make_utterance_key(mixture_utterance: object, enrolment_speakers_utterance: object) -> str:
@@ -545,7 +574,8 @@ def _sample_detail_cache_key(
 ) -> str:
     parts = [CACHE_VERSION, "sample_detail", model, result_root, metadata_key]
     for metric_key in METRIC_SPECS:
-        parts.append(_path_signature(_expected_metric_csv_path(model, metric_key, result_root)))
+        for path in _expected_metric_csv_paths(model, metric_key, result_root):
+            parts.append(_path_signature(path))
     return _hash_parts(parts)
 
 
@@ -990,7 +1020,7 @@ def _apply_common_filters(work: pd.DataFrame, filter_config: FilterConfig) -> pd
 def _status_record(
     model: str,
     metric_key: str,
-    csv_path: Path,
+    csv_path: Path | str,
     result_root: str,
     status: str,
     row_count: int = 0,
@@ -1019,14 +1049,17 @@ def _load_metric_file(
     result_root: str,
 ) -> tuple[pd.DataFrame, dict[str, Any], pd.DataFrame]:
     spec = METRIC_SPECS[metric_key]
-    csv_path = model_dir / f"{model}{spec['file_suffix']}"
-    if not csv_path.is_file():
+    candidate_paths = _metric_csv_search_paths_for_model_dir(model, metric_key, model_dir)
+    csv_path = next((path for path in candidate_paths if path.is_file()), None)
+    if csv_path is None:
+        searched = " ; ".join(str(path) for path in candidate_paths)
         return pd.DataFrame(), _status_record(
             model,
             metric_key,
-            csv_path,
+            candidate_paths[0],
             result_root,
             "missing",
+            message=f"Searched paths: {searched}",
         ), pd.DataFrame()
 
     try:
