@@ -52,10 +52,10 @@ ENROL_GT_LENGTH_LABELS = {
 }
 
 DEFAULT_SELECTED_MODELS = [
-    "bsrnn_vox1",
-    "tfmap_context_vox_old",
-    "lauratse_enrol5",
-    "alphaflowtse_noisy_ECAPAMLP_steps1",
+    "spk_emb_100",
+    "spk_emb_causal_100",
+    "tfmap_context_100",
+    "tfmap_context_causal_100",
 ]
 
 PAGE_REFS: dict[str, Any] = {}
